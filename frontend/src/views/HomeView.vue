@@ -2,93 +2,50 @@
   <div>
     <section class="hero-shell">
       <div class="hero-grid" />
-      <div class="mx-auto grid w-full max-w-7xl items-center gap-14 px-5 pb-20 pt-16 sm:px-8 lg:grid-cols-[1.05fr_.95fr] lg:pb-28 lg:pt-24">
-        <div class="relative z-10">
-          <div class="eyebrow"><span class="status-dot" /> Document work, without the busywork</div>
-          <h1 class="mt-6 max-w-3xl text-5xl font-bold leading-[1.03] tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-[76px]">
-            Every document.<br /><span class="text-cobalt">One clear workspace.</span>
-          </h1>
-          <p class="mt-7 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl">
-            Convert, organize, and prepare your files in a focused workspace built for speed, clarity, and control.
-          </p>
-          <div class="mt-9 flex flex-col gap-3 sm:flex-row">
-            <a href="#tools" class="primary-button justify-center">Explore tools <ArrowDown :size="17" /></a>
-            <a href="#how-it-works" class="secondary-button justify-center">See how it works <Play :size="16" fill="currentColor" /></a>
+      <div class="hero-content mx-auto w-full max-w-7xl px-5 pb-20 pt-12 sm:px-8 lg:pb-28 lg:pt-16">
+        <div class="mb-14 flex items-center justify-between gap-4 text-xs font-semibold text-slate-400"><span class="inline-flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_0_4px_rgba(115,239,188,.12)]" /> Workspace online</span><span class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 sm:inline-flex">Document operations, simplified.</span></div>
+        <div class="grid items-center gap-16 lg:grid-cols-[1.04fr_.96fr]">
+          <div>
+            <div class="hero-kicker"><span class="status-dot" /> The quiet power tool for documents</div>
+            <h1 class="hero-title mt-7">Make busywork<br /><span class="hero-title-accent">disappear.</span></h1>
+            <p class="hero-copy mt-7">A focused workspace to convert, organize, and move files forward — without the clutter of heavyweight software.</p>
+            <div class="mt-9 flex flex-col gap-3 sm:flex-row"><a href="#tools" class="hero-button justify-center">Open the workspace <ArrowDown :size="17" /></a><a href="#how-it-works" class="hero-button--ghost justify-center">See the system <Play :size="15" fill="currentColor" /></a></div>
+            <div class="hero-trust mt-9"><span class="inline-flex items-center gap-2"><ShieldCheck :size="15" /> Files stay private</span><span class="inline-flex items-center gap-2"><Zap :size="15" /> Fast by default</span><span class="inline-flex items-center gap-2"><Sparkles :size="15" /> No install required</span></div>
           </div>
-          <div class="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-slate-500">
-            <span class="inline-flex items-center gap-2"><ShieldCheck :size="16" class="text-cobalt" /> Files stay private</span>
-            <span class="inline-flex items-center gap-2"><Zap :size="16" class="text-amber-500" /> Fast processing</span>
-            <span class="inline-flex items-center gap-2"><Check :size="16" class="text-emerald-500" /> No install required</span>
+          <div class="relative mx-auto w-full max-w-xl lg:mr-0">
+            <div class="absolute -inset-10 rounded-full bg-[#516fff]/10 blur-3xl" />
+            <div class="workspace-card">
+              <div class="workspace-topbar"><span class="window-dot bg-[#ff786b]" /><span class="window-dot bg-[#f5bf5e]" /><span class="window-dot bg-[#67d8a1]" /><div class="ml-2 h-3 w-px bg-slate-200" /><span class="ml-1 text-[10px] font-bold uppercase tracking-[.17em] text-slate-400">OfficeFlow / Quick workspace</span><span class="ml-auto rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Live</span></div>
+              <div class="relative mt-5 rounded-[22px] border border-[#d9e1fb] bg-[#f5f7ff] p-5 sm:p-6"><div class="flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase tracking-[.17em] text-[#4164ea]">Start with a document</p><p class="mt-1 text-sm font-bold text-[#10182f]">Choose a workflow and get to done.</p></div><span class="hidden rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-slate-400 shadow-sm sm:inline-flex">25 MB max</span></div><div class="upload-zone mt-5"><div class="upload-orb"><UploadCloud :size="28" /></div><p class="mt-4 text-base font-bold text-[#10182f]">Drop a file here to begin</p><p class="mt-1 text-sm text-slate-500">or browse your device</p><div class="mt-5 flex flex-wrap justify-center gap-2"><span v-for="format in ['PDF', 'DOCX', 'XLSX', 'JPG']" :key="format" class="rounded-lg border border-[#e0e6f6] bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-500">{{ format }}</span></div></div></div>
+              <div class="mt-5 grid grid-cols-3 gap-3"><div class="rounded-2xl border border-[#e7ebf4] bg-white p-3"><div class="flex items-center justify-between"><FileText :size="17" class="text-[#4164ea]" /><span class="text-[9px] font-bold text-emerald-500">01</span></div><p class="mt-3 text-xs font-bold text-slate-700">Documents</p><p class="mt-1 text-[10px] text-slate-400">Convert files</p></div><div class="rounded-2xl border border-[#e7ebf4] bg-white p-3"><div class="flex items-center justify-between"><Table2 :size="17" class="text-[#ff876e]" /><span class="text-[9px] font-bold text-emerald-500">02</span></div><p class="mt-3 text-xs font-bold text-slate-700">Tables</p><p class="mt-1 text-[10px] text-slate-400">Extract data</p></div><div class="rounded-2xl border border-[#e7ebf4] bg-white p-3"><div class="flex items-center justify-between"><Layers3 :size="17" class="text-[#8b5cf6]" /><span class="text-[9px] font-bold text-emerald-500">03</span></div><p class="mt-3 text-xs font-bold text-slate-700">Pages</p><p class="mt-1 text-[10px] text-slate-400">Organize PDFs</p></div></div>
+            </div>
+            <div class="absolute -bottom-7 -left-6 hidden items-center gap-3 rounded-2xl border border-white/60 bg-white px-4 py-3 shadow-[0_18px_38px_rgba(0,0,0,.2)] sm:flex"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500"><Check :size="18" /></span><div><p class="text-xs font-bold text-slate-800">One clear flow</p><p class="text-[11px] text-slate-500">Upload → process → done</p></div></div>
+            <div class="absolute -right-5 top-20 hidden rounded-2xl border border-white/10 bg-[#151d40]/90 px-4 py-3 text-white shadow-[0_18px_38px_rgba(0,0,0,.25)] sm:block"><p class="text-[10px] font-bold uppercase tracking-[.14em] text-blue-200">Today</p><p class="mt-1 text-xl font-bold">14.2k <span class="text-xs font-medium text-slate-400">files moved</span></p></div>
           </div>
         </div>
-
-        <div class="relative z-10">
-          <div class="workspace-card">
-            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div><p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Quick workspace</p><p class="mt-1 text-sm font-semibold text-slate-800">Start with a document</p></div>
-              <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-600">READY</span>
-            </div>
-            <div class="mt-5 rounded-2xl border-2 border-dashed border-cobalt/25 bg-[#f7faff] p-7 text-center transition hover:border-cobalt/50">
-              <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-cobalt shadow-[0_8px_25px_rgba(40,93,255,.12)]"><UploadCloud :size="27" /></div>
-              <p class="mt-4 font-semibold text-slate-800">Drop a file here to get started</p>
-              <p class="mt-1 text-sm text-slate-500">or choose a tool below</p>
-              <a href="#tools" class="mt-5 inline-flex items-center gap-2 text-sm font-bold text-cobalt hover:underline">Browse supported tools <ArrowRight :size="15" /></a>
-            </div>
-            <div class="mt-5 grid grid-cols-3 gap-2 text-center text-xs font-semibold text-slate-500">
-              <div class="rounded-xl bg-slate-50 p-3"><FileText :size="18" class="mx-auto mb-1 text-slate-400" />PDF</div>
-              <div class="rounded-xl bg-slate-50 p-3"><Table2 :size="18" class="mx-auto mb-1 text-slate-400" />Tables</div>
-              <div class="rounded-xl bg-slate-50 p-3"><Layers3 :size="18" class="mx-auto mb-1 text-slate-400" />Pages</div>
-            </div>
-          </div>
-          <div class="absolute -bottom-5 -left-5 hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_16px_40px_rgba(15,23,42,.1)] sm:flex sm:items-center sm:gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500"><Check :size="18" /></span><div><p class="text-xs font-bold text-slate-800">Simple by design</p><p class="text-[11px] text-slate-500">One flow from upload to result</p></div></div>
-        </div>
+        <div class="mt-20 grid overflow-hidden rounded-[24px] border border-white/10 bg-white/[.05] sm:grid-cols-3"><div v-for="stat in heroStats" :key="stat.label" class="border-b border-white/10 px-5 py-5 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"><p class="text-2xl font-bold tracking-tight text-white">{{ stat.value }}</p><p class="mt-1 text-xs font-semibold text-slate-400">{{ stat.label }}</p></div></div>
       </div>
     </section>
 
-    <section id="tools" class="mx-auto w-full max-w-7xl px-5 py-20 sm:px-8 lg:py-24">
-      <div class="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-        <div><p class="section-kicker">Tool library</p><h2 class="section-title">Find the right tool, fast.</h2><p class="section-copy">Start with what you need. Every available tool below connects to a real processing workflow.</p></div>
-        <div class="relative w-full md:w-72"><Search :size="18" class="absolute left-3.5 top-3.5 text-slate-400" /><input v-model="search" class="search-input" placeholder="What do you want to do?" aria-label="Search tools" /></div>
-      </div>
+    <section id="tools" class="relative overflow-hidden bg-[#f5f7fb] px-5 py-20 sm:px-8 lg:py-28"><div class="pointer-events-none absolute left-[-10rem] top-20 h-72 w-72 rounded-full bg-[#dfe6ff] blur-3xl" /><div class="relative mx-auto w-full max-w-7xl"><div class="flex flex-col justify-between gap-8 md:flex-row md:items-end"><div><span class="section-label"><Command :size="13" /> Tool library</span><h2 class="section-title">A tool for every<br class="hidden sm:block" /> document moment.</h2><p class="section-copy">No hunting through menus. Pick a focused workflow, add your file, and keep moving.</p></div><div class="w-full md:w-80"><label class="sr-only" for="tool-search">Search tools</label><div class="relative"><Search :size="18" class="absolute left-4 top-4 text-slate-400" /><input id="tool-search" v-model="search" class="search-input" placeholder="Search a workflow..." aria-label="Search tools" /></div><p class="mt-2 text-right text-[11px] font-semibold text-slate-400">{{ filteredTools.length }} workflows available</p></div></div>
+      <div class="mt-10 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Tool categories"><button v-for="category in categories" :key="category" class="category-pill" :class="{ 'category-pill--active': activeCategory === category }" @click="activeCategory = category">{{ category }}</button></div>
+      <div v-if="filteredTools.length" class="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><router-link v-for="(tool, index) in filteredTools" :key="tool.slug" :to="`/tools/${tool.slug}`" class="tool-card group" :class="{ 'tool-card--soon': !tool.available }" :style="{ '--delay': `${index * 35}ms` }"><div class="flex items-start justify-between"><span class="tool-icon"><component :is="tool.icon" :size="21" /></span><span v-if="tool.badge" class="soon-badge">{{ tool.badge }}</span><span v-else-if="tool.popular" class="popular-badge">Popular</span></div><div class="relative z-[1] mt-5 flex items-start justify-between gap-3"><div><p class="text-base font-bold text-slate-900">{{ tool.name }}</p><p class="mt-2 text-sm leading-6 text-slate-500">{{ tool.description }}</p></div><ArrowUpRight :size="18" class="mt-0.5 shrink-0 text-slate-300 transition duration-200 group-hover:-translate-y-1 group-hover:translate-x-1 group-hover:text-[#4164ea]" /></div><div class="relative z-[1] mt-5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"><span>{{ tool.input }}</span><ArrowRight :size="13" /><span class="text-[#4164ea]">{{ tool.output }}</span></div></router-link></div><div v-else class="empty-state"><SearchX :size="24" class="mx-auto text-slate-400" /><p class="mt-3 font-semibold text-slate-700">No tools match that search.</p><button class="mt-2 text-sm font-bold text-[#4164ea]" @click="search = ''; activeCategory = 'All'">Clear filters</button></div>
+    </div></section>
 
-      <div class="mt-9 flex gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Tool categories">
-        <button v-for="category in categories" :key="category" class="category-pill" :class="{ 'category-pill--active': activeCategory === category }" @click="activeCategory = category">{{ category }}</button>
-      </div>
+    <section id="how-it-works" class="bg-white px-5 py-20 sm:px-8 lg:py-28"><div class="mx-auto w-full max-w-7xl"><div class="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:items-end"><div><span class="section-label"><Route :size="13" /> The OfficeFlow way</span><h2 class="section-title">Less interface.<br /><span class="text-[#4164ea]">More momentum.</span></h2><p class="section-copy">Every screen is designed to answer one question: what is the next clear action?</p></div><div class="grid gap-4 sm:grid-cols-3"><div v-for="(step, index) in steps" :key="step.title" class="process-step"><span class="step-number">0{{ index + 1 }}</span><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf1ff] text-[#4164ea]"><component :is="step.icon" :size="20" /></div><h3 class="mt-5 text-lg font-bold text-slate-900">{{ step.title }}</h3><p class="mt-2 text-sm leading-6 text-slate-500">{{ step.description }}</p></div></div></div></div></section>
 
-      <div v-if="filteredTools.length" class="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <router-link v-for="tool in filteredTools" :key="tool.slug" :to="`/tools/${tool.slug}`" class="tool-card" :class="{ 'tool-card--soon': !tool.available }">
-          <div class="flex items-start justify-between"><span class="tool-icon"><component :is="tool.icon" :size="21" /></span><span v-if="tool.badge" class="soon-badge">{{ tool.badge }}</span><span v-else-if="tool.popular" class="popular-badge">Popular</span></div>
-          <div class="mt-5 flex items-start justify-between gap-3"><div><p class="text-base font-bold text-slate-900">{{ tool.name }}</p><p class="mt-2 text-sm leading-6 text-slate-500">{{ tool.description }}</p></div><ArrowUpRight :size="18" class="mt-0.5 shrink-0 text-slate-300 transition group-hover:text-cobalt" /></div>
-          <div class="mt-5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400"><span>{{ tool.input }}</span><ArrowRight :size="13" /><span>{{ tool.output }}</span></div>
-        </router-link>
-      </div>
-      <div v-else class="empty-state"><SearchX :size="24" class="text-slate-400" /><p class="mt-3 font-semibold text-slate-700">No tools match that search.</p><button class="mt-2 text-sm font-bold text-cobalt" @click="search = ''; activeCategory = 'All'">Clear filters</button></div>
-    </section>
-
-    <section id="how-it-works" class="border-y border-slate-200 bg-white">
-      <div class="mx-auto w-full max-w-7xl px-5 py-20 sm:px-8 lg:py-24"><div class="max-w-2xl"><p class="section-kicker">How it works</p><h2 class="section-title">A calmer path from file to finished.</h2></div><div class="mt-12 grid gap-4 md:grid-cols-3"><div v-for="(step, index) in steps" :key="step.title" class="process-step"><span class="step-number">0{{ index + 1 }}</span><component :is="step.icon" :size="22" class="text-cobalt" /><h3 class="mt-5 text-lg font-bold text-slate-900">{{ step.title }}</h3><p class="mt-2 text-sm leading-6 text-slate-500">{{ step.description }}</p></div></div></div>
-    </section>
-
-    <section id="pricing" class="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8"><div class="flex flex-col items-start justify-between gap-5 rounded-3xl bg-slate-950 px-7 py-9 text-white sm:flex-row sm:items-center sm:px-10"><div><p class="text-sm font-bold uppercase tracking-[0.14em] text-cobalt-200">Built for the next step</p><h2 class="mt-2 text-2xl font-bold tracking-tight">More document workflows are on the way.</h2><p class="mt-2 max-w-xl text-sm leading-6 text-slate-300">The MVP keeps the core flow focused. OCR, office conversion, history, and team features can be added without changing the workspace model.</p></div><a href="#tools" class="secondary-button whitespace-nowrap border-white/20 bg-white text-slate-900 hover:bg-slate-100">Explore MVP tools <ArrowRight :size="16" /></a></div></section>
+    <section class="px-5 py-8 sm:px-8 lg:py-12"><div class="relative mx-auto w-full max-w-7xl overflow-hidden rounded-[28px] bg-[#141c3b] px-7 py-10 text-white sm:px-10 lg:px-14 lg:py-12"><div class="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full border border-white/10 shadow-[0_0_0_40px_rgba(255,255,255,.03),0_0_0_80px_rgba(255,255,255,.02)]" /><div class="relative flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-center"><div><p class="text-[11px] font-bold uppercase tracking-[.18em] text-[#9fb0ff]">Built for your next step</p><h2 class="mt-3 max-w-2xl text-3xl font-bold tracking-[-.045em] sm:text-4xl">Your documents deserve a better commute.</h2><p class="mt-4 max-w-xl text-sm leading-7 text-slate-300">Start with the core tools today. Add your team, history, and automation when the work grows.</p></div><div class="flex flex-col gap-3 sm:flex-row"><a href="#tools" class="hero-button whitespace-nowrap">Open the workspace <ArrowRight :size="16" /></a><router-link to="/pricing" class="hero-button--ghost whitespace-nowrap">View plans <ArrowUpRight :size="16" /></router-link></div></div></div></section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ArrowDown, ArrowRight, ArrowUpRight, Check, Download, FileText, Layers3, Play, Search, SearchX, ShieldCheck, Table2, UploadCloud, Zap } from '@lucide/vue'
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, Command, Download, FileText, Layers3, Play, Route, Search, SearchX, ShieldCheck, Sparkles, Table2, UploadCloud, Zap } from '@lucide/vue'
 import { categories, tools } from '../data/tools'
 
 const search = ref('')
 const activeCategory = ref<(typeof categories)[number]>('All')
-const filteredTools = computed(() => tools.filter((tool) => {
-  const matchesCategory = activeCategory.value === 'All' || tool.category === activeCategory.value
-  const query = search.value.trim().toLowerCase()
-  return matchesCategory && (!query || `${tool.name} ${tool.description} ${tool.category}`.toLowerCase().includes(query))
-}))
-const steps = [
-  { title: 'Choose a workflow', description: 'Pick a focused tool with clear input and output formats.', icon: Search },
-  { title: 'Upload securely', description: 'Drop your file or browse from any device with accessible controls.', icon: UploadCloud },
-  { title: 'Download the result', description: 'Track processing status and download your finished document.', icon: Download },
-]
-
+const heroStats = [{ value: '14', label: 'Focused workflows' }, { value: '25 MB', label: 'Maximum file size' }, { value: '1 flow', label: 'From upload to result' }]
+const filteredTools = computed(() => tools.filter((tool) => { const matchesCategory = activeCategory.value === 'All' || tool.category === activeCategory.value; const query = search.value.trim().toLowerCase(); return matchesCategory && (!query || `${tool.name} ${tool.description} ${tool.category}`.toLowerCase().includes(query)) }))
+const steps = [{ title: 'Choose', description: 'Pick a focused workflow with a clear outcome.', icon: Search }, { title: 'Process', description: 'Upload once and let the pipeline do the busywork.', icon: UploadCloud }, { title: 'Move on', description: 'Download the result and get back to real work.', icon: Download }]
 </script>
