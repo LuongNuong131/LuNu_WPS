@@ -1,0 +1,6 @@
+Collecting PyMuPDF
+  Downloading pymupdf-1.28.2-cp310-abi3-win_amd64.whl.metadata (26 kB)
+Downloading pymupdf-1.28.2-cp310-abi3-win_amd64.whl (19.8 MB)
+   ---------------------------------------- 19.8/19.8 MB 24.0 MB/s  0:00:01
+Installing collected packages: PyMuPDF
+Successfully installed PyMuPDF-1.28.2

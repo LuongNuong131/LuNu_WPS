@@ -1,0 +1,80 @@
+# ==========================================
+# GÓI CHUNG (OS & IDE)
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==========================================
+# BẢO MẬT (MÔI TRƯỜNG & SECRETS)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+
+# ==========================================
+# VUE 3 / VITE / NODE.JS (FRONTEND)
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# PYTHON / FASTAPI (BACKEND)
+# ==========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Môi trường ảo (Virtual Environments)
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Coverage
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ==========================================
+# OFFICEFLOW SPECIFIC (PROJECT DATA)
+# ==========================================
+# Tuyệt đối không push file upload/download của user lên Git
+backend/storage/uploads/*
+backend/storage/outputs/*
+!backend/storage/uploads/.gitkeep
+!backend/storage/outputs/.gitkeep
+
+# Bỏ qua database cục bộ (nếu dùng SQLite cho MVP)
+backend/*.sqlite3
+backend/*.db
