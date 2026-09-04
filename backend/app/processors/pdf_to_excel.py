@@ -3,7 +3,10 @@ import pandas as pd
 from app.processors.base import DocumentProcessor
 
 class PDFToExcelProcessor(DocumentProcessor):
-    def process(self, input_path: str, output_path: str, options: dict = None) -> bool:
+    def process(self, input_paths: list[str], output_path: str, options: dict = None) -> bool:
+        if not input_paths:
+            raise ValueError("Không có file PDF đầu vào.")
+        input_path = input_paths[0]
         df_list = []
         
         try:
