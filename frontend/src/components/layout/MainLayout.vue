@@ -14,9 +14,9 @@
         </nav>
 
         <div class="flex items-center gap-2">
-          <button class="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 sm:block">
-            Sign in
-          </button>
+          <router-link to="/dashboard" class="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 sm:block">
+          Dashboard
+        </router-link>
           <router-link to="/#tools" class="primary-button hidden sm:inline-flex">Get started <ArrowUpRight :size="16" /></router-link>
           <button class="icon-button md:hidden" aria-label="Open navigation" @click="mobileOpen = !mobileOpen">
             <Menu v-if="!mobileOpen" :size="21" />
@@ -57,6 +57,7 @@ const navItems = [
   { label: 'PDF', to: '/#pdf-tools' },
   { label: 'Office', to: '/#office-tools' },
   { label: 'Images', to: '/#image-tools' },
-  { label: 'Pricing', to: '/#pricing' },
+  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Pricing', to: '/pricing' },
 ]
 </script>
