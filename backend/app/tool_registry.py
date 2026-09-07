@@ -14,7 +14,7 @@ class ToolDefinition:
 
 
 TOOLS: dict[str, ToolDefinition] = {
-    "pdf-to-excel": ToolDefinition("pdf-to-excel", "PDF to Excel", "PDF", (".pdf",), ".xlsx", options=("extraction", "include_text", "ocr_fallback")),
+    "pdf-to-excel": ToolDefinition("pdf-to-excel", "PDF to Excel", "PDF", (".pdf",), ".xlsx", options=("extraction", "include_text", "ocr_fallback", "ocr_language")),
     "merge-pdf": ToolDefinition("merge-pdf", "Merge PDF", "PDF", (".pdf",), ".pdf", True),
     "split-pdf": ToolDefinition("split-pdf", "Split PDF", "PDF", (".pdf",), ".zip"),
     "compress-pdf": ToolDefinition("compress-pdf", "Compress PDF", "PDF", (".pdf",), ".pdf"),

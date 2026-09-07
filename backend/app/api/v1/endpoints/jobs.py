@@ -58,6 +58,7 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
                 "output_extension": tool.output_extension,
                 "tool": tool.name,
                 "options": options,
+                "diagnostics": getattr(processor, "last_diagnostics", {}),
             }
     except Exception as exc:
         job.status = JobStatus.FAILED

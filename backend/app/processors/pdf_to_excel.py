@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from app.document_ai.pipeline import PDFIntelligencePipeline
 from app.processors.base import DocumentProcessor
 
 
@@ -31,6 +32,9 @@ class PDFToExcelProcessor(DocumentProcessor):
     failing with an empty workbook.
     """
 
+    def __init__(self):
+        self.last_diagnostics: dict[str, Any] = {}
+
     def process(self, input_paths: list[str], output_path: str, options: dict | None = None) -> bool:
         if not input_paths:
             raise ValueError("Không có file PDF đầu vào.")
@@ -43,21 +47,39 @@ class PDFToExcelProcessor(DocumentProcessor):
         text_rows: list[list[Any]] = []
         page_count = 0
         ocr_used = False
-        with pdfplumber.open(input_paths[0]) as pdf:
-            page_count = len(pdf.pages)
-            for page_number, page in enumerate(pdf.pages, start=1):
-                text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
+        if options.get("use_canonical", True) is not False:
+            document = PDFIntelligencePipeline().analyze(input_paths[0], options)
+            self.last_diagnostics = document.diagnostics()
+            self.last_diagnostics["extraction_mode"] = extraction_mode
+            page_count = document.page_count
+            ocr_used = any(page.ocr_used for page in document.pages)
+            for page in document.pages:
                 if include_text:
-                    for line_number, line in enumerate(text.splitlines(), start=1):
+                    for line_number, line in enumerate(page.raw_text.splitlines(), start=1):
                         clean_line = _clean_cell(line)
                         if clean_line:
-                            text_rows.append([page_number, line_number, clean_line])
+                            text_rows.append([page.page_number, line_number, clean_line])
                 if extraction_mode != "text":
-                    tables.extend(_extract_page_tables(page, page_number))
+                    for table_index, table in enumerate(page.tables, start=1):
+                        rows = _normalize_rows([[cell.text for cell in row] for row in table.rows])
+                        if len(rows) >= 2:
+                            tables.append(ExtractedTable(page.page_number, table_index, rows, table.source))
+        else:
+            with pdfplumber.open(input_paths[0]) as pdf:
+                page_count = len(pdf.pages)
+                for page_number, page in enumerate(pdf.pages, start=1):
+                    text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
+                    if include_text:
+                        for line_number, line in enumerate(text.splitlines(), start=1):
+                            clean_line = _clean_cell(line)
+                            if clean_line:
+                                text_rows.append([page_number, line_number, clean_line])
+                    if extraction_mode != "text":
+                        tables.extend(_extract_page_tables(page, page_number))
 
-        if not text_rows and options.get("ocr_fallback", True) is not False and extraction_mode != "tables":
-            text_rows = _ocr_pdf(input_paths[0])
-            ocr_used = bool(text_rows)
+            if not text_rows and options.get("ocr_fallback", True) is not False and extraction_mode != "tables":
+                text_rows = _ocr_pdf(input_paths[0])
+                ocr_used = bool(text_rows)
 
         if not tables and not text_rows:
             raise ValueError("PDF không chứa lớp văn bản hoặc bảng có thể trích xuất. Đây có thể là PDF scan; hãy bật OCR ở pipeline OCR.")
