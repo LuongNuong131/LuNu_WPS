@@ -30,6 +30,37 @@ class BoundingBox:
     def height(self) -> float:
         return max(0.0, self.bottom - self.top)
 
+    def as_list(self) -> list[float]:
+        return [round(self.x0, 2), round(self.top, 2), round(self.x1, 2), round(self.bottom, 2)]
+
+
+@dataclass
+class Evidence:
+    document_id: str
+    page_number: int | None = None
+    bbox: BoundingBox | None = None
+    block_id: str | None = None
+    table_id: str | None = None
+    cell_id: str | None = None
+    token_ids: list[str] = field(default_factory=list)
+    quote: str | None = None
+    engine: str = "unknown"
+    confidence: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "document_id": self.document_id,
+            "page": self.page_number,
+            "bbox": self.bbox.as_list() if self.bbox else None,
+            "block_id": self.block_id,
+            "table_id": self.table_id,
+            "cell_id": self.cell_id,
+            "token_ids": self.token_ids,
+            "quote": self.quote,
+            "engine": self.engine,
+            "confidence": round(self.confidence, 4),
+        }
+
 
 @dataclass
 class Confidence:
@@ -45,6 +76,66 @@ class Confidence:
 
 
 @dataclass
+class DocumentSource:
+    filename: str
+    mime_type: str = "application/pdf"
+    fingerprint: str | None = None
+    byte_size: int | None = None
+    source_type: str = "unknown"
+
+
+@dataclass
+class DocumentQuality:
+    label: str = "unknown"
+    score: float | None = None
+    native_text_pages: int = 0
+    ocr_pages: int = 0
+    blank_pages: int = 0
+    low_resolution_pages: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DocumentProfile:
+    document_type: str = "pdf"
+    source_type: str = "unknown"
+    complexity: str = "unknown"
+    languages: list[str] = field(default_factory=list)
+    table_heavy: bool = False
+    form_heavy: bool = False
+    likely_handwriting: bool = False
+    page_count: int = 0
+
+
+@dataclass
+class ProcessingEvent:
+    stage: str
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    engine: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DocumentEntity:
+    entity_type: str
+    raw_value: str
+    normalized_value: Any = None
+    confidence: Confidence | None = None
+    evidence: list[Evidence] = field(default_factory=list)
+
+
+@dataclass
+class DocumentRelation:
+    relation_type: str
+    subject: str
+    object: str
+    confidence: Confidence | None = None
+    evidence: list[Evidence] = field(default_factory=list)
+
+
+@dataclass
 class DocumentCell:
     text: str
     bbox: BoundingBox | None = None
@@ -52,6 +143,8 @@ class DocumentCell:
     col_span: int = 1
     confidence: Confidence | None = None
     data_type: str = "text"
+    cell_id: str | None = None
+    evidence: list[Evidence] = field(default_factory=list)
 
 
 @dataclass
@@ -62,6 +155,8 @@ class DocumentTable:
     source: str = "table-extractor"
     confidence: Confidence | None = None
     has_header: bool = True
+    table_id: str | None = None
+    evidence: list[Evidence] = field(default_factory=list)
 
     @property
     def column_count(self) -> int:
@@ -81,6 +176,8 @@ class DocumentBlock:
     reading_order: int = 0
     confidence: Confidence | None = None
     children: list["DocumentBlock"] = field(default_factory=list)
+    block_id: str | None = None
+    evidence: list[Evidence] = field(default_factory=list)
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
@@ -95,6 +192,11 @@ class DocumentPage:
     raw_text: str = ""
     ocr_used: bool = False
     language: str | None = None
+    image_quality: dict[str, Any] = field(default_factory=dict)
+    orientation: str = "upright"
+    reading_order: list[str] = field(default_factory=list)
+    headers: list[DocumentBlock] = field(default_factory=list)
+    footers: list[DocumentBlock] = field(default_factory=list)
 
 
 @dataclass
@@ -103,7 +205,15 @@ class CanonicalDocument:
     page_count: int
     pages: list[DocumentPage] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
-    entities: list[dict[str, Any]] = field(default_factory=list)
+    source: DocumentSource | None = None
+    profile: DocumentProfile | None = None
+    quality: DocumentQuality | None = None
+    entities: list[DocumentEntity] = field(default_factory=list)
+    relations: list[DocumentRelation] = field(default_factory=list)
+    key_value_pairs: list[dict[str, Any]] = field(default_factory=list)
+    diagnostics_data: dict[str, Any] = field(default_factory=dict)
+    provenance: list[Evidence] = field(default_factory=list)
+    processing_history: list[ProcessingEvent] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -122,12 +232,17 @@ class CanonicalDocument:
             for cell in row
             if cell.confidence
         ]
-        return {
+        result = {
             "pages": self.page_count,
             "tables": len(self.all_tables),
             "blocks": len(self.all_blocks),
             "ocr_pages": sum(1 for page in self.pages if page.ocr_used),
             "low_confidence_cells": sum(1 for value in confidences if value < 0.70),
             "average_cell_confidence": round(sum(confidences) / len(confidences), 3) if confidences else None,
-            "warnings": self.warnings,
+            "profile": self.profile.__dict__ if self.profile else None,
+            "quality": self.quality.__dict__ if self.quality else None,
+            "processing_stages": [event.stage for event in self.processing_history],
+            "warnings": [*self.warnings, *(self.quality.warnings if self.quality else [])],
         }
+        result.update(self.diagnostics_data)
+        return result
