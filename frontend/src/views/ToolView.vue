@@ -8,6 +8,7 @@
         <div class="flex items-center justify-between border-b border-slate-100 pb-5"><div><p class="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Workspace</p><h2 class="mt-1 text-lg font-bold text-slate-900">Upload and process</h2></div><span class="status-chip"><span class="status-dot" /> Ready</span></div>
         <div v-if="status === 'IDLE'" class="pt-6">
           <div v-if="tool.options?.includes('degrees')" class="mb-5 rounded-2xl border border-slate-200 bg-slate-50 p-4"><label class="block text-xs font-bold uppercase tracking-[.13em] text-slate-500" for="degrees">Rotation angle</label><select id="degrees" v-model="options.degrees" class="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 focus:border-cobalt focus:outline-none sm:w-56"><option value="90">90 degrees</option><option value="180">180 degrees</option><option value="270">270 degrees</option></select></div>
+          <div v-if="tool.options?.includes('extraction')" class="mb-5 rounded-2xl border border-[#d9e1fb] bg-[#f5f7ff] p-4"><div class="flex items-start gap-3"><div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#4164ea] shadow-sm"><Table2 :size="17" /></div><div class="min-w-0 flex-1"><label class="block text-xs font-bold uppercase tracking-[.13em] text-slate-500" for="extraction">Extraction mode</label><select id="extraction" v-model="options.extraction" class="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 focus:border-cobalt focus:outline-none"><option value="auto">Adaptive — tables + full text</option><option value="tables">Tables only</option><option value="text">Full text only</option></select><label class="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600"><input v-model="options.include_text" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-[#4164ea]" /> Keep the document text sheet</label></div></div></div>
           <div v-if="tool.options?.includes('pages')" class="mb-5 rounded-2xl border border-slate-200 bg-slate-50 p-4"><label class="block text-xs font-bold uppercase tracking-[.13em] text-slate-500" for="pages">Page selection</label><input id="pages" v-model="options.pages" class="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-cobalt focus:outline-none" placeholder="Example: 1, 3-5" /><p class="mt-2 text-xs text-slate-400">Use page numbers and ranges separated by commas.</p></div>
           <FileUploader :accept="acceptForTool(tool)" :multiple="allowsMultiple(tool)" @files-selected="startConversion" /><p class="mt-5 text-center text-xs text-slate-400">Supported input: {{ tool.input }} · Maximum file size: 25 MB</p>
         </div>
@@ -22,7 +23,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { AlertTriangle, CheckCircle2, ChevronRight, Download, LoaderCircle, RotateCcw, ShieldCheck } from '@lucide/vue'
+import { AlertTriangle, CheckCircle2, ChevronRight, Download, LoaderCircle, RotateCcw, ShieldCheck, Table2 } from '@lucide/vue'
 import api from '../services/api'
 import FileUploader from '../components/upload/FileUploader.vue'
 import { allowsMultiple, acceptForTool, getTool } from '../data/tools'
@@ -35,7 +36,7 @@ const progress = ref(0)
 const currentJobId = ref('')
 const outputFilename = ref('')
 const errorMessage = ref('')
-const options = reactive<{ degrees: string; pages: string }>({ degrees: '90', pages: '' })
+const options = reactive<{ degrees: string; pages: string; extraction: string; include_text: boolean }>({ degrees: '90', pages: '', extraction: 'auto', include_text: true })
 let pollingInterval: number | null = null
 const stageMessage = computed(() => status.value === 'UPLOADING' ? 'Preparing your files for the processing pipeline.' : `Running ${tool.value?.name || 'document'} and validating the output.`)
 
@@ -43,7 +44,7 @@ async function startConversion(files: File[]) {
   if (!files.length || !tool.value) return
   if ((tool.value.options?.includes('pages') && !options.pages.trim())) { errorMessage.value = 'Please enter the pages you want to process.'; status.value = 'FAILED'; return }
   status.value = 'UPLOADING'; progress.value = 12; errorMessage.value = ''
-  const formData = new FormData(); formData.append('tool_slug', tool.value.slug); formData.append('options_json', JSON.stringify(options)); files.forEach((file) => formData.append('files', file))
+  const payload = { ...options }; if (!tool.value.options?.includes('extraction')) delete (payload as Partial<typeof payload>).extraction; if (!tool.value.options?.includes('pages')) delete (payload as Partial<typeof payload>).pages; if (!tool.value.options?.includes('degrees')) delete (payload as Partial<typeof payload>).degrees; const formData = new FormData(); formData.append('tool_slug', tool.value.slug); formData.append('options_json', JSON.stringify(payload)); files.forEach((file) => formData.append('files', file))
   try { const response = await api.post('/jobs/', formData, { headers: { 'Content-Type': 'multipart/form-data' } }); currentJobId.value = response.data.id; status.value = 'PROCESSING'; progress.value = 35; startPolling() }
   catch (error: any) { status.value = 'FAILED'; errorMessage.value = error.response?.data?.detail || 'Upload failed. Please check the server and try again.' }
 }

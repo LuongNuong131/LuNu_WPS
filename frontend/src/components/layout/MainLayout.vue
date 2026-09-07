@@ -16,7 +16,7 @@
 
         <div class="flex items-center gap-2">
           <router-link to="/dashboard" class="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 transition hover:-translate-y-0.5 hover:border-[#c6d0f4] hover:bg-[#f7f8ff] sm:flex"><LayoutDashboard :size="15" /> <span class="hidden lg:inline">Workspace</span></router-link>
-          <router-link to="/#tools" class="primary-button hidden sm:inline-flex">Get started <ArrowUpRight :size="16" /></router-link>
+          <router-link to="/#tools" class="primary-button hidden sm:inline-flex">Start creating <ArrowUpRight :size="16" /></router-link>
           <button class="icon-button md:hidden" aria-label="Open navigation" @click="mobileOpen = !mobileOpen">
             <Menu v-if="!mobileOpen" :size="21" />
             <X v-else :size="21" />
@@ -29,7 +29,7 @@
           <router-link v-for="item in navItems" :key="item.label" :to="item.to" class="mobile-nav-link" @click="mobileOpen = false">
             {{ item.label }}
           </router-link>
-          <router-link to="/#tools" class="primary-button mt-3 justify-center" @click="mobileOpen = false">Get started <ArrowUpRight :size="16" /></router-link>
+          <router-link to="/#tools" class="primary-button mt-3 justify-center" @click="mobileOpen = false">Start creating <ArrowUpRight :size="16" /></router-link>
         </nav>
       </div>
     </header>
@@ -60,6 +60,5 @@ const navItems = [
   { label: 'Office', to: '/#tools' },
   { label: 'Images', to: '/#tools' },
   { label: 'Dashboard', to: '/dashboard' },
-  { label: 'Pricing', to: '/pricing' },
 ]
 </script>

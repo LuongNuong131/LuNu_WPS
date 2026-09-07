@@ -3,7 +3,6 @@ import MainLayout from '../components/layout/MainLayout.vue'
 import HomeView from '../views/HomeView.vue'
 import ToolView from '../views/ToolView.vue'
 import DashboardView from '../views/DashboardView.vue'
-import PricingView from '../views/PricingView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -26,11 +25,6 @@ const router = createRouter({
           path: 'dashboard',
           name: 'dashboard',
           component: DashboardView
-        },
-        {
-          path: 'pricing',
-          name: 'pricing',
-          component: PricingView
         }
       ]
     }

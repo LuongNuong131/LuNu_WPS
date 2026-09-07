@@ -22,6 +22,8 @@ class JobResponse(JobBase):
     original_filename: str
     output_filename: Optional[str] = None
     error_message: Optional[str] = None
+    result_metadata: Optional[dict] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
     
 # In-memory DB cho MVP

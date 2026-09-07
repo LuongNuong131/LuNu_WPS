@@ -1,6 +1,6 @@
-from datetime import datetime
 import json
 import os
+from datetime import datetime, timezone
 import shutil
 import uuid
 from typing import List
@@ -52,9 +52,17 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
             job.status = JobStatus.SUCCESS
             job.progress = 100
             job.output_filename = output_filename
+            job.completed_at = datetime.now(timezone.utc)
+            job.result_metadata = {
+                "output_bytes": os.path.getsize(output_path) if os.path.exists(output_path) else 0,
+                "output_extension": tool.output_extension,
+                "tool": tool.name,
+                "options": options,
+            }
     except Exception as exc:
         job.status = JobStatus.FAILED
         job.error_message = str(exc)
+        job.completed_at = datetime.now(timezone.utc)
     finally:
         _cleanup(input_paths)
 
@@ -107,7 +115,7 @@ async def create_job(
         _cleanup(input_paths or [os.path.join(job_dir, "placeholder")])
         raise HTTPException(status_code=500, detail=f"Không thể lưu file: {exc}") from exc
 
-    job = JobResponse(id=job_id, tool_slug=tool_slug, status=JobStatus.QUEUED, progress=0, original_filename=", ".join(original_names), created_at=datetime.utcnow())
+    job = JobResponse(id=job_id, tool_slug=tool_slug, status=JobStatus.QUEUED, progress=0, original_filename=", ".join(original_names), created_at=datetime.now(timezone.utc))
     jobs_db[job_id] = job
     background_tasks.add_task(process_job_task, job_id, input_paths, tool_slug, options)
     return job
