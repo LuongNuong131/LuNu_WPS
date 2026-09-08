@@ -32,6 +32,17 @@ def _cleanup(paths: List[str]) -> None:
         shutil.rmtree(os.path.dirname(paths[0]), ignore_errors=True)
 
 
+def _output_path(filename: str | None) -> str:
+    """Resolve an internally generated artifact without allowing path escape."""
+    if not filename or os.path.basename(filename) != filename:
+        raise HTTPException(status_code=404, detail="Artifact không hợp lệ.")
+    output_dir = os.path.realpath(settings.OUTPUT_DIR)
+    candidate = os.path.realpath(os.path.join(output_dir, filename))
+    if os.path.dirname(candidate) != output_dir:
+        raise HTTPException(status_code=404, detail="Artifact không hợp lệ.")
+    return candidate
+
+
 def _validate_options(tool_slug: str, raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise HTTPException(status_code=400, detail="Options phải là một JSON object.")
@@ -135,6 +146,8 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
         job.status = JobStatus.FAILED
         job.error_message = _public_error(exc)
         job.completed_at = datetime.now(timezone.utc)
+        if os.path.exists(output_path):
+            os.remove(output_path)
     finally:
         _cleanup(input_paths)
 
@@ -170,7 +183,15 @@ async def create_job(
             if extension not in tool.input_extensions:
                 allowed = ", ".join(tool.input_extensions)
                 raise HTTPException(status_code=400, detail=f"Định dạng {extension or 'file'} không hợp lệ. Chấp nhận: {allowed}.")
+            # Multiple uploads may contain the same basename. Never overwrite a
+            # previously accepted input because that changes the user's source.
             destination = os.path.join(job_dir, safe_name)
+            if os.path.exists(destination):
+                stem, suffix = os.path.splitext(safe_name)
+                counter = 2
+                while os.path.exists(destination):
+                    destination = os.path.join(job_dir, f"{stem}_{counter}{suffix}")
+                    counter += 1
             size = 0
             with open(destination, "wb") as buffer:
                 while chunk := await upload.read(1024 * 1024):
@@ -178,6 +199,8 @@ async def create_job(
                     if size > MAX_FILE_SIZE:
                         raise HTTPException(status_code=413, detail=f"{safe_name} vượt quá giới hạn 25 MB.")
                     buffer.write(chunk)
+            if size == 0:
+                raise HTTPException(status_code=400, detail=f"{safe_name} là file rỗng.")
             input_paths.append(destination)
             original_names.append(safe_name)
     except HTTPException:
@@ -206,7 +229,7 @@ async def download_job(job_id: str):
     job = jobs_db.get(job_id)
     if not job or job.status != JobStatus.SUCCESS:
         raise HTTPException(status_code=400, detail="File chưa sẵn sàng hoặc đã bị lỗi.")
-    file_path = os.path.join(settings.OUTPUT_DIR, job.output_filename or "")
+    file_path = _output_path(job.output_filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File không tồn tại.")
     return FileResponse(path=file_path, filename=job.output_filename, media_type="application/octet-stream")

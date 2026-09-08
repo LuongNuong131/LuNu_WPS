@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 
 from main import app
+from app.api.v1.endpoints.jobs import _output_path
 
 
 def pdf_bytes() -> bytes:
@@ -44,3 +45,25 @@ def test_pdf_to_excel_job_returns_metadata(tmp_path: Path) -> None:
     assert "truth_facts" in body["result_metadata"]
     assert "truth_graph_edges" in body["result_metadata"]
     assert client.get(f"/api/v1/jobs/{job_id}/download").status_code == 200
+
+
+def test_upload_rejects_empty_file() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/jobs/",
+        data={"tool_slug": "pdf-to-excel", "options_json": "{}"},
+        files={"files": ("empty.pdf", b"", "application/pdf")},
+    )
+    assert response.status_code == 400
+    assert "rỗng" in response.json()["detail"]
+
+
+def test_download_path_must_stay_inside_output_directory() -> None:
+    from fastapi import HTTPException
+
+    try:
+        _output_path("../outside.xlsx")
+    except HTTPException as exc:
+        assert exc.status_code == 404
+    else:
+        raise AssertionError("path traversal was not rejected")

@@ -2,6 +2,20 @@
 
 OfficeFlow là dự án cộng đồng miễn phí, local/open-source-first, tập trung vào các workflow xử lý tài liệu chạy thật. Dự án không có pricing, paywall, billing hay tài khoản thương mại. Các file được xử lý theo job; lịch sử gần đây trong giao diện chỉ được lưu cục bộ trên thiết bị và chưa phải bộ nhớ đồng bộ lâu dài.
 
+## Trạng thái triển khai
+
+| Capability | Status | Ghi chú |
+|---|---|---|
+| PDF/Office conversion workflows | Implemented | Chạy qua API và processor hiện có. |
+| PDF → Excel Document Brain | Implemented | Có native extraction, OCR fallback, evidence, truth, validation và audit. |
+| Upload and artifact boundary hardening | Implemented | Kiểm tra extension, giới hạn kích thước, file rỗng, path artifact và lỗi output. |
+| Job persistence and restart recovery | Partial | Job hiện chỉ lưu trong RAM của backend. |
+| Authentication, ownership and authorization | Planned | Chưa có identity model; không được xem là production privacy boundary. |
+| Durable queue and workers | Planned | Hiện dùng FastAPI `BackgroundTasks`. |
+| Document library and synchronized history | Planned | Frontend history hiện chỉ lưu trên thiết bị. |
+
+Chi tiết gap, rủi ro và migration plan nằm trong [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) và [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md).
+
 ## Các workflow hiện có
 
 Repository giữ các workflow PDF và Office hiện có: PDF → Excel, Merge PDF, Split PDF, Compress PDF, Rotate PDF, PDF → JPG, Extract pages, Delete pages, PDF → Word, Word → PDF, Excel → PDF, PowerPoint → PDF, Images → PDF và image conversion.
@@ -73,7 +87,7 @@ cd .. && git diff --check
 
 ## Giới hạn và privacy
 
-Giới hạn upload hiện tại là 25 MB mỗi file và tối đa 10 file theo tool. Input tạm được lưu trong job directory và dọn sau khi xử lý; output không bị xóa trước download. Chưa có persistence database hay cleanup TTL tự động cho output production. SHA-256 chỉ là fingerprint nội bộ, không phải cam kết bảo mật hoặc deduplication persistence. Không nên gửi tài liệu nhạy cảm vào môi trường chưa được harden theo chính sách triển khai của bạn.
+Giới hạn upload hiện tại là 25 MB mỗi file và tối đa 10 file theo tool. File rỗng bị từ chối. Nếu một request có cùng basename nhiều lần, backend đổi tên bản lưu nội bộ để không ghi đè nguồn đã nhận. Input tạm được lưu trong job directory và dọn sau khi xử lý; output lỗi bị xóa, còn output thành công chưa có cleanup TTL tự động. Download chỉ chấp nhận artifact filename do backend sinh và kiểm tra artifact nằm trong output directory. Chưa có persistence database, authentication hoặc ownership authorization; vì vậy không nên gửi tài liệu nhạy cảm vào môi trường chưa được harden theo chính sách triển khai của bạn. SHA-256 chỉ là fingerprint nội bộ, không phải cam kết bảo mật hoặc deduplication persistence.
 
 OCR và table reconstruction là các quá trình xác suất/heuristic. OfficeFlow công khai confidence, warning và evidence để người dùng kiểm tra; không tuyên bố tái tạo 100% mọi PDF scan hoặc layout bất thường.
 
