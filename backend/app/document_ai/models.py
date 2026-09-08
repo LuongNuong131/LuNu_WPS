@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from app.document_ai.contracts import DocumentState, PipelineVersion, QualityDimensions, ReviewTask, ValidationResult
+from app.document_ai.contracts import DocumentFact, DocumentState, GraphEdge, PipelineVersion, QualityDimensions, ReviewTask, ValidationResult
 
 
 class BlockType(str, Enum):
@@ -212,6 +212,8 @@ class CanonicalDocument:
     quality: DocumentQuality | None = None
     entities: list[DocumentEntity] = field(default_factory=list)
     relations: list[DocumentRelation] = field(default_factory=list)
+    facts: list[DocumentFact] = field(default_factory=list)
+    graph_edges: list[GraphEdge] = field(default_factory=list)
     key_value_pairs: list[dict[str, Any]] = field(default_factory=list)
     diagnostics_data: dict[str, Any] = field(default_factory=dict)
     provenance: list[Evidence] = field(default_factory=list)
@@ -255,6 +257,8 @@ class CanonicalDocument:
             "quality_dimensions": self.quality_dimensions.to_dict(),
             "validation_results": [item.to_dict() for item in self.validation_results],
             "review_tasks": [item.to_dict() for item in self.review_tasks],
+            "facts": [item.to_dict() for item in self.facts],
+            "graph_edges": [item.to_dict() for item in self.graph_edges],
         }
         result.update(self.diagnostics_data)
         return result

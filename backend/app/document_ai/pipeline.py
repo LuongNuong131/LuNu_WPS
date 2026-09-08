@@ -27,6 +27,7 @@ from app.document_ai.profile import DocumentProfiler
 from app.document_ai.routing import ProcessingRouter
 from app.document_ai.semantics import extract_entities
 from app.document_ai.validation import validate_document
+from app.document_ai.truth import build_truth_model
 
 
 class PDFIntelligencePipeline:
@@ -104,8 +105,11 @@ class PDFIntelligencePipeline:
             document.processing_history.append(ProcessingEvent(stage="ocr", status="completed", engine=self.ocr_engine.name, details={"pages": [page.page_number for page in document.pages if page.ocr_used]}))
         _attach_provenance(document)
         document.entities = extract_entities(document)
+        build_truth_model(document)
         document.state = DocumentState.EXTRACTED
         document.diagnostics_data["entities"] = len(document.entities)
+        document.diagnostics_data["facts"] = len(document.facts)
+        document.diagnostics_data["graph_edges"] = len(document.graph_edges)
         document.validation_results, document.review_tasks = validate_document(document)
         valid_results = sum(1 for result in document.validation_results if result.status == "valid")
         document.quality_dimensions.consistency_confidence = round(valid_results / max(1, len(document.validation_results)), 4)

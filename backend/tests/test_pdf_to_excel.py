@@ -38,8 +38,10 @@ def test_native_pipeline_has_stable_evidence(tmp_path: Path) -> None:
     assert document.pages[0].reading_order
     assert document.provenance
     assert document.state.value in {"ready", "review_required"}
-    assert document.pipeline_version.pipeline_version == "4.0.0"
+    assert document.pipeline_version.pipeline_version == "5.0.0"
     assert document.quality_dimensions.evidence_coverage is not None
+    assert document.facts
+    assert all(fact.status.value in {"extracted", "normalized"} for fact in document.facts)
     assert json.dumps(document.diagnostics(), default=str)
 
 
@@ -74,3 +76,5 @@ def test_pdf_to_excel_contains_text_tables_and_audit(tmp_path: Path) -> None:
     assert processor.last_diagnostics["document_state"] in {"ready", "review_required"}
     assert "quality_dimensions" in processor.last_diagnostics
     assert "validation_results" in processor.last_diagnostics
+    assert processor.last_diagnostics["facts"] >= 1
+    assert "graph_edges" in processor.last_diagnostics

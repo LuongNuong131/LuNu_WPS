@@ -105,6 +105,10 @@ class PDFToExcelProcessor(DocumentProcessor):
             self.last_diagnostics["quality_dimensions"] = document.quality_dimensions.to_dict()
             self.last_diagnostics["validation_results"] = [item.to_dict() for item in document.validation_results]
             self.last_diagnostics["review_tasks"] = [item.to_dict() for item in document.review_tasks]
+            self.last_diagnostics["facts_count"] = len(document.facts)
+            self.last_diagnostics["graph_edges_count"] = len(document.graph_edges)
+            self.last_diagnostics["truth_facts"] = [item.to_dict() for item in document.facts]
+            self.last_diagnostics["truth_graph_edges"] = [item.to_dict() for item in document.graph_edges]
         self.last_diagnostics["audit_available"] = True
         self.last_diagnostics["workbook_sheets"] = list(workbook.sheetnames)
         self.last_diagnostics["table_quality"] = [_table_quality(table) for table in tables]
@@ -260,7 +264,11 @@ def _table_quality(table: ExtractedTable) -> dict[str, Any]:
 def _write_audit_sheet(sheet, document: Any, tables: list[ExtractedTable]) -> None:
     sheet.append(["Kind", "Page", "Object ID", "Raw value / quote", "Confidence", "Engine", "Evidence"])
     if document is not None:
-        sheet.append(["document", "", "state", document.state.value, document.quality_dimensions.overall, "pipeline", json.dumps({"quality": document.quality_dimensions.to_dict(), "review_tasks": len(document.review_tasks)}, ensure_ascii=False)])
+        sheet.append(["document", "", "state", document.state.value, document.quality_dimensions.overall, "pipeline", json.dumps({"quality": document.quality_dimensions.to_dict(), "review_tasks": len(document.review_tasks), "facts": len(document.facts), "graph_edges": len(document.graph_edges)}, ensure_ascii=False)])
+        for fact in document.facts:
+            sheet.append(["fact", "", fact.fact_id, f"{fact.name}: {fact.raw_value}", fact.confidence, fact.status.value, json.dumps({"normalized_value": fact.normalized_value, "evidence": fact.evidence, "explanation": fact.explanation}, ensure_ascii=False)])
+        for edge in document.graph_edges:
+            sheet.append(["graph_edge", "", edge.subject, edge.predicate + " → " + edge.object, edge.confidence, "derived", json.dumps({"evidence": edge.evidence}, ensure_ascii=False)])
         for page in document.pages:
             for block in page.blocks:
                 evidence = block.evidence[0] if block.evidence else None

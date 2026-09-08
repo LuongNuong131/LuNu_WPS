@@ -86,3 +86,9 @@ Quality không được suy đoán thành một con số duy nhất. `quality_di
 Validation deterministic kiểm tra evidence coverage, độ nhất quán số cột của table và tính hợp lý sơ bộ của các giá trị tiền tệ. Khi entity quan trọng có confidence thấp hoặc thiếu evidence, hệ thống tạo `ReviewTask` với field, raw value, priority, reason, confidence và evidence. Review task không sửa raw source value; nó chỉ đánh dấu phần cần người dùng kiểm tra.
 
 Các layer như knowledge graph, multi-document aggregation, document comparison, RAG và workflow automation vẫn là extension points tương lai. Chúng không được giả lập trong giao diện khi backend chưa thực sự cung cấp capability tương ứng.
+
+## Document Truth Model 5.0
+
+Document Brain phân biệt raw observation, extracted value, normalized value, inferred value và verified value. Các trạng thái `unknown`, `not_found`, `unsupported`, `uncertain` và `conflicting` không bị chuyển thành dữ liệu chắc chắn. `DocumentFact` giữ raw value, normalized value, truth status, confidence, explanation và evidence.
+
+Canonical result cũng có graph edges typed. Ví dụ một invoice fact có thể liên kết với money fact bằng quan hệ `has_amount`; đây là quan hệ được suy ra từ các entity đã có evidence, không phải dữ liệu được bịa thêm. PDF → Excel đưa facts, graph edges, validation và review tasks vào Audit sheet cũng như job metadata để có thể kiểm tra hai chiều từ semantic result về source evidence.

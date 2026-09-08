@@ -18,15 +18,29 @@ class DocumentState(str, Enum):
     FAILED = "failed"
 
 
+class TruthStatus(str, Enum):
+    OBSERVED = "observed"
+    EXTRACTED = "extracted"
+    NORMALIZED = "normalized"
+    INFERRED = "inferred"
+    VERIFIED = "verified"
+    AI_GENERATED = "ai_generated"
+    CONFLICTING = "conflicting"
+    UNKNOWN = "unknown"
+    NOT_FOUND = "not_found"
+    UNSUPPORTED = "unsupported"
+    UNCERTAIN = "uncertain"
+
+
 @dataclass(frozen=True)
 class PipelineVersion:
     pipeline: str = "document-brain"
-    pipeline_version: str = "4.0.0"
+    pipeline_version: str = "5.0.0"
     ocr_version: str = "tesseract-adapter-1"
     layout_version: str = "heuristic-layout-1"
     table_version: str = "pdfplumber-table-2"
-    semantic_version: str = "deterministic-semantic-2"
-    export_version: str = "xlsx-audit-2"
+    semantic_version: str = "deterministic-semantic-3"
+    export_version: str = "xlsx-audit-3"
 
     def to_dict(self) -> dict[str, str]:
         return asdict(self)
@@ -42,6 +56,35 @@ class QualityDimensions:
     evidence_coverage: float | None = None
     overall: float | None = None
     explanations: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DocumentFact:
+    fact_id: str
+    name: str
+    raw_value: Any
+    normalized_value: Any = None
+    status: TruthStatus = TruthStatus.EXTRACTED
+    confidence: float = 0.0
+    evidence: list[dict[str, Any]] = field(default_factory=list)
+    explanation: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        result = asdict(self)
+        result["status"] = self.status.value
+        return result
+
+
+@dataclass
+class GraphEdge:
+    subject: str
+    predicate: str
+    object: str
+    confidence: float = 0.0
+    evidence: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
