@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = os.path.join(BASE_DIR, "storage")
     UPLOAD_DIR: str = os.path.join(STORAGE_DIR, "uploads")
     OUTPUT_DIR: str = os.path.join(STORAGE_DIR, "outputs")
+    JOB_DB_PATH: str = os.path.join(STORAGE_DIR, "jobs.sqlite3")
     
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]

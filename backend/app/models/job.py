@@ -25,6 +25,3 @@ class JobResponse(JobBase):
     result_metadata: Optional[dict] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
-    
-# In-memory DB cho MVP
-jobs_db = {}

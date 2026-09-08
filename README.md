@@ -9,7 +9,7 @@ OfficeFlow là dự án cộng đồng miễn phí, local/open-source-first, t�
 | PDF/Office conversion workflows | Implemented | Chạy qua API và processor hiện có. |
 | PDF → Excel Document Brain | Implemented | Có native extraction, OCR fallback, evidence, truth, validation và audit. |
 | Upload and artifact boundary hardening | Implemented | Kiểm tra extension, giới hạn kích thước, file rỗng, path artifact và lỗi output. |
-| Job persistence and restart recovery | Partial | Job hiện chỉ lưu trong RAM của backend. |
+| Job persistence and restart recovery | Partial | Metadata job đã lưu SQLite; job đang chạy khi restart được đánh dấu cần retry. Durable worker recovery vẫn chưa có. |
 | Authentication, ownership and authorization | Planned | Chưa có identity model; không được xem là production privacy boundary. |
 | Durable queue and workers | Planned | Hiện dùng FastAPI `BackgroundTasks`. |
 | Document library and synchronized history | Planned | Frontend history hiện chỉ lưu trên thiết bị. |
@@ -74,6 +74,8 @@ npm ci
 npm run dev
 ```
 
+SQLite JobStore mặc định được tạo tại `backend/storage/jobs.sqlite3` và bị loại khỏi Git. Có thể đổi đường dẫn bằng biến cấu hình `JOB_DB_PATH`. Hai endpoint vận hành là `/health` cho liveness và `/health/ready` cho readiness, bao gồm kiểm tra thư mục storage và SQLite.
+
 ## Kiểm thử
 
 Regression tests tạo fixture PDF native, bảng có đường kẻ, scan image-only và kiểm tra workbook mở được bằng `openpyxl`, sheet structure, typed money, provenance, OCR pass metadata, API options validation, result metadata và download.
@@ -87,7 +89,7 @@ cd .. && git diff --check
 
 ## Giới hạn và privacy
 
-Giới hạn upload hiện tại là 25 MB mỗi file và tối đa 10 file theo tool. File rỗng bị từ chối. Nếu một request có cùng basename nhiều lần, backend đổi tên bản lưu nội bộ để không ghi đè nguồn đã nhận. Input tạm được lưu trong job directory và dọn sau khi xử lý; output lỗi bị xóa, còn output thành công chưa có cleanup TTL tự động. Download chỉ chấp nhận artifact filename do backend sinh và kiểm tra artifact nằm trong output directory. Chưa có persistence database, authentication hoặc ownership authorization; vì vậy không nên gửi tài liệu nhạy cảm vào môi trường chưa được harden theo chính sách triển khai của bạn. SHA-256 chỉ là fingerprint nội bộ, không phải cam kết bảo mật hoặc deduplication persistence.
+Giới hạn upload hiện tại là 25 MB mỗi file và tối đa 10 file theo tool. File rỗng bị từ chối. Nếu một request có cùng basename nhiều lần, backend đổi tên bản lưu nội bộ để không ghi đè nguồn đã nhận. Input tạm được lưu trong job directory và dọn sau khi xử lý; output lỗi bị xóa, còn output thành công chưa có cleanup TTL tự động. Download chỉ chấp nhận artifact filename do backend sinh và kiểm tra artifact nằm trong output directory. Job metadata hiện có persistence SQLite cho local/test, nhưng chưa có PostgreSQL, authentication hoặc ownership authorization; vì vậy không nên gửi tài liệu nhạy cảm vào môi trường chưa được harden theo chính sách triển khai của bạn. SHA-256 chỉ là fingerprint nội bộ, không phải cam kết bảo mật hoặc deduplication persistence.
 
 OCR và table reconstruction là các quá trình xác suất/heuristic. OfficeFlow công khai confidence, warning và evidence để người dùng kiểm tra; không tuyên bố tái tạo 100% mọi PDF scan hoặc layout bất thường.
 

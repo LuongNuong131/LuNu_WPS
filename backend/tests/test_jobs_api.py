@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -8,6 +9,8 @@ from reportlab.pdfgen import canvas
 
 from main import app
 from app.api.v1.endpoints.jobs import _output_path
+from app.models.job import JobResponse, JobStatus
+from app.persistence.job_store import JobStore
 
 
 def pdf_bytes() -> bytes:
@@ -67,3 +70,36 @@ def test_download_path_must_stay_inside_output_directory() -> None:
         assert exc.status_code == 404
     else:
         raise AssertionError("path traversal was not rejected")
+
+
+def test_job_store_survives_reopen_and_recovers_incomplete(tmp_path: Path) -> None:
+    database = tmp_path / "jobs.sqlite3"
+    job = JobResponse(
+        id="restart-test",
+        tool_slug="pdf-to-excel",
+        status=JobStatus.PROCESSING,
+        progress=42,
+        original_filename="invoice.pdf",
+        created_at=datetime.now(timezone.utc),
+    )
+    JobStore(str(database)).save(job)
+
+    reopened = JobStore(str(database))
+    restored = reopened.get("restart-test")
+    assert restored is not None
+    assert restored.status == JobStatus.PROCESSING
+    assert restored.progress == 42
+    assert reopened.recover_incomplete() == 1
+    recovered = reopened.get("restart-test")
+    assert recovered is not None
+    assert recovered.status == JobStatus.FAILED
+    assert "restarted" in (recovered.error_message or "")
+
+
+def test_health_endpoints_report_runtime_state() -> None:
+    client = TestClient(app)
+    assert client.get("/health").json()["status"] == "ok"
+    readiness = client.get("/health/ready")
+    assert readiness.status_code == 200
+    assert readiness.json()["status"] == "ready"
+    assert readiness.json()["database"]["backend"] == "sqlite"

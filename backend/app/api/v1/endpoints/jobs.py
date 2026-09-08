@@ -10,7 +10,8 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
-from app.models.job import JobResponse, JobStatus, jobs_db
+from app.models.job import JobResponse, JobStatus
+from app.persistence.job_store import JobStore
 from app.processors.factory import get_processor
 from app.tool_registry import get_tool
 
@@ -18,6 +19,8 @@ router = APIRouter()
 MAX_FILE_SIZE = 25 * 1024 * 1024
 MAX_FILES = 10
 _ALLOWED_OCR_CODES = {"eng", "vie", "chi_sim", "jpn", "kor", "tha", "ind", "fra", "deu", "spa", "por", "ita", "rus", "ara"}
+job_store = JobStore(settings.JOB_DB_PATH)
+job_store.recover_incomplete()
 
 
 def _safe_filename(filename: str | None) -> str:
@@ -95,17 +98,19 @@ def _json_safe(value: Any) -> Any:
 
 
 def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, options: dict) -> None:
-    job = jobs_db.get(job_id)
+    job = job_store.get(job_id)
     if not job:
         _cleanup(input_paths)
         return
     job.status = JobStatus.PROCESSING
     job.progress = 10
+    job_store.save(job)
     processor = get_processor(tool_slug)
     tool = get_tool(tool_slug)
     if not processor or not tool:
         job.status = JobStatus.FAILED
         job.error_message = "Công cụ chưa được hỗ trợ trong phiên bản hiện tại."
+        job_store.save(job)
         _cleanup(input_paths)
         return
     output_filename = f"OfficeFlow_{tool_slug}_{job_id}{tool.output_extension}"
@@ -142,10 +147,12 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
                 "audit_available": bool(diagnostics),
                 "diagnostics": diagnostics,
             })
+            job_store.save(job)
     except Exception as exc:
         job.status = JobStatus.FAILED
         job.error_message = _public_error(exc)
         job.completed_at = datetime.now(timezone.utc)
+        job_store.save(job)
         if os.path.exists(output_path):
             os.remove(output_path)
     finally:
@@ -211,14 +218,14 @@ async def create_job(
         raise HTTPException(status_code=500, detail=f"Không thể lưu file: {_public_error(exc)}") from exc
 
     job = JobResponse(id=job_id, tool_slug=tool_slug, status=JobStatus.QUEUED, progress=0, original_filename=", ".join(original_names), created_at=datetime.now(timezone.utc))
-    jobs_db[job_id] = job
+    job_store.save(job)
     background_tasks.add_task(process_job_task, job_id, input_paths, tool_slug, options)
     return job
 
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job_status(job_id: str):
-    job = jobs_db.get(job_id)
+    job = job_store.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Không tìm thấy Job")
     return job
@@ -226,7 +233,7 @@ async def get_job_status(job_id: str):
 
 @router.get("/{job_id}/download")
 async def download_job(job_id: str):
-    job = jobs_db.get(job_id)
+    job = job_store.get(job_id)
     if not job or job.status != JobStatus.SUCCESS:
         raise HTTPException(status_code=400, detail="File chưa sẵn sàng hoặc đã bị lỗi.")
     file_path = _output_path(job.output_filename)

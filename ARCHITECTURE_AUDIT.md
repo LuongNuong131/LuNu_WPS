@@ -12,16 +12,16 @@ Milestone hiện tại harden boundary của job lifecycle mà không thay đổ
 |---|---|---|
 | Frontend | Vue 3 + Vite, tool workspace, local history | Implemented |
 | API | FastAPI multipart upload, status polling, download | Implemented |
-| Job execution | FastAPI `BackgroundTasks`, in-memory `jobs_db` | Partial |
+| Job execution | FastAPI `BackgroundTasks`, SQLite-backed `JobStore` | Partial |
 | Input storage | Per-job temporary directory, removed after processing | Implemented |
 | Artifact storage | Local output directory, generated filename, no TTL cleanup | Partial |
 | Document intelligence | Canonical PDF pipeline with native extraction and Tesseract adapter | Implemented |
 | Truth and evidence | Facts, typed graph edges, validation and review tasks | Implemented for PDF → Excel |
 | Authentication | None | Planned |
 | Ownership and authorization | None; resources are addressed by job ID | Planned / security gap |
-| Durable persistence | None | Planned |
+| Durable persistence | SQLite job metadata for local/test; no PostgreSQL migrations yet | Partial |
 | Queue and worker recovery | None; in-process background task | Planned |
-| E2E deployment hardening | Not present | Planned |
+| E2E deployment hardening | `/health` and `/health/ready`; no auth/deployment policy yet | Partial |
 
 ## Target
 
@@ -42,15 +42,16 @@ The core processing contract should remain the `CanonicalDocument`. Storage, que
 
 ## Gap
 
-The highest-impact gaps are persistence, identity, authorization, durable job recovery, artifact retention policy and end-to-end security tests. The current in-memory job registry means a backend restart loses status records even when output files remain on disk. The current local download endpoint is safe against basic path traversal after this milestone, but it does not yet prove that the requester owns the job.
+The highest-impact gaps are identity, authorization, PostgreSQL persistence, durable job recovery, artifact retention policy and end-to-end security tests. Job metadata no longer depends only on process memory: SQLite preserves records across store re-open and startup recovery marks queued/processing jobs as failed with an explicit retry message. The current local download endpoint is safe against basic path traversal after the previous milestone, but it does not yet prove that the requester owns the job.
 
 ## Migration
 
-1. **M01 — Audit and lifecycle hardening:** document the actual architecture, validate upload boundaries, protect artifact path resolution, clean failed outputs and add regression tests. Completed in this change.
-2. **M02 — Identity foundation:** introduce explicit user/session identity only after selecting the deployment trust model. Do not infer ownership from an untrusted client field.
-3. **M03 — Durable persistence:** add migrations and persistent records for users, documents, jobs, artifacts, pipeline versions and review tasks. Keep local filesystem storage behind an artifact service.
-4. **M04 — Restartable execution:** move processing to a durable queue and worker with idempotency, leases and recovery semantics.
-5. **M05 — Workspace and review:** expose persisted documents, evidence and review tasks in the frontend with authorization checks.
+1. **M01 — Audit and lifecycle hardening:** document the actual architecture, validate upload boundaries, protect artifact path resolution, clean failed outputs and add regression tests. Completed.
+2. **M02-A — Local persistence foundation:** add SQLite `JobStore`, explicit schema constraints, restart-state recovery and health/readiness checks. Completed in this change.
+3. **M02-B — Identity foundation:** introduce explicit user/session identity only after selecting the deployment trust model. Do not infer ownership from an untrusted client field.
+4. **M03 — Durable production persistence:** add migrations and persistent records for users, documents, jobs, artifacts, pipeline versions and review tasks. Keep local filesystem storage behind an artifact service.
+5. **M04 — Restartable execution:** move processing to a durable queue and worker with idempotency, leases and recovery semantics.
+6. **M05 — Workspace and review:** expose persisted documents, evidence and review tasks in the frontend with authorization checks.
 
 ## Risks
 

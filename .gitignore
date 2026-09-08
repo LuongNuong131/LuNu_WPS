@@ -78,3 +78,5 @@ backend/storage/outputs/*
 # Bỏ qua database cục bộ (nếu dùng SQLite cho MVP)
 backend/*.sqlite3
 backend/*.db
+backend/storage/*.sqlite3
+backend/storage/*.db

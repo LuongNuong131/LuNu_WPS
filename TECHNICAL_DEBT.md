@@ -2,10 +2,11 @@
 
 | Problem | Impact | Priority | Recommendation | Status |
 |---|---|---:|---|---|
-| Job metadata chỉ nằm trong `jobs_db` của process | Restart backend làm mất trạng thái và lịch sử job | P0 | Thêm persistence có migration và contract versioning | Open |
+| Job metadata mới có SQLite local, chưa có PostgreSQL/migrations production | Có thể dùng cho local/test nhưng chưa đáp ứng multi-instance và vận hành production | P0 | Thêm migration framework, PostgreSQL adapter và transaction policy | Partial |
 | Artifact lưu local, chưa có TTL hoặc lifecycle policy | Có thể tích tụ dữ liệu và khó vận hành production | P0 | Tạo artifact service, retention policy, cleanup job và audit log | Open |
 | Chưa có authentication/authorization/ownership | Không thể chứng minh người tải artifact là chủ tài nguyên | P0 | Chọn identity model, gắn owner vào document/job/artifact, test isolation | Open |
-| BackgroundTasks không phải durable queue | Crash giữa chừng không có recovery hoặc retry có kiểm soát | P0 | Queue + worker có lease, idempotency key và retry policy | Open |
+| BackgroundTasks không phải durable queue | Crash giữa chừng được ghi nhận là failed nhưng chưa có resume/retry worker có kiểm soát | P0 | Queue + worker có lease, idempotency key và retry policy | Partial |
+| Readiness mới kiểm tra SQLite và thư mục local | Chưa kiểm tra PostgreSQL, queue hoặc object storage production | P1 | Mở rộng health dependency checks khi các adapter được tích hợp | Partial |
 | Table reconstruction và OCR vẫn heuristic | Scan khó, merged cells và layout bất thường có thể cần review | P1 | Xây benchmark corpus, đo precision/recall và tăng review UI | Partial |
 | Frontend history chỉ lưu localStorage | Lịch sử không đồng bộ và link có thể hết hạn | P1 | Hiển thị persisted document library sau khi có identity/persistence | Open |
 | Chưa có metrics/tracing production | Khó theo dõi latency, lỗi và chất lượng pipeline | P1 | Thêm structured logs, metrics và correlation ID | Open |
