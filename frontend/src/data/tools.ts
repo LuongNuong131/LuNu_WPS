@@ -14,12 +14,12 @@ export interface OfficeTool {
   available: boolean
   multiple?: boolean
   accept: string
-  options?: Array<'degrees' | 'pages' | 'extraction'>
+  options?: Array<'degrees' | 'pages' | 'extraction' | 'include_text' | 'ocr_fallback' | 'ocr_language' | 'use_canonical'>
   badge?: string
 }
 
 export const tools: OfficeTool[] = [
-  { slug: 'pdf-to-excel', name: 'PDF to Excel', description: 'Convert tables and full-document text into a structured, editable workbook.', category: 'PDF', input: 'PDF', output: 'XLSX', icon: Table2, popular: true, available: true, accept: '.pdf', options: ['extraction'] },
+  { slug: 'pdf-to-excel', name: 'PDF to Excel', description: 'Convert tables and full-document text into a structured, editable workbook.', category: 'PDF', input: 'PDF', output: 'XLSX', icon: Table2, popular: true, available: true, accept: '.pdf', options: ['extraction', 'include_text', 'ocr_fallback', 'ocr_language', 'use_canonical'] },
   { slug: 'merge-pdf', name: 'Merge PDF', description: 'Combine multiple PDFs into one organized document.', category: 'PDF', input: 'PDF', output: 'PDF', icon: Combine, popular: true, available: true, multiple: true, accept: '.pdf' },
   { slug: 'split-pdf', name: 'Split PDF', description: 'Separate every page into individual PDFs in one ZIP file.', category: 'PDF', input: 'PDF', output: 'ZIP', icon: Scissors, available: true, accept: '.pdf' },
   { slug: 'compress-pdf', name: 'Compress PDF', description: 'Reduce document size for easier sharing and storage.', category: 'PDF', input: 'PDF', output: 'PDF', icon: Archive, popular: true, available: true, accept: '.pdf' },

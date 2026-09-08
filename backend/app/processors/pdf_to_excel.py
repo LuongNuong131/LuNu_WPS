@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+import json
 from typing import Any
 
 import pdfplumber
@@ -45,6 +47,7 @@ class PDFToExcelProcessor(DocumentProcessor):
         include_text = options.get("include_text", True) is not False and extraction_mode != "tables"
         tables: list[ExtractedTable] = []
         text_rows: list[list[Any]] = []
+        document = None
         page_count = 0
         ocr_used = False
         if options.get("use_canonical", True) is not False:
@@ -95,6 +98,11 @@ class PDFToExcelProcessor(DocumentProcessor):
         if include_text and text_rows:
             text_sheet = workbook.create_sheet("Document Text")
             _write_text_sheet(text_sheet, text_rows)
+        audit_sheet = workbook.create_sheet("Audit")
+        _write_audit_sheet(audit_sheet, document, tables)
+        self.last_diagnostics["audit_available"] = True
+        self.last_diagnostics["workbook_sheets"] = list(workbook.sheetnames)
+        self.last_diagnostics["table_quality"] = [_table_quality(table) for table in tables]
         _style_workbook(workbook)
         workbook.save(output_path)
         return True
@@ -180,8 +188,9 @@ def _write_overview(sheet, input_path: str, page_count: int, tables: list[Extrac
         ["Pages scanned", page_count],
         ["Tables detected", len(tables)],
         ["Text lines preserved", len(text_rows)],
-        ["OCR fallback", "Used for image-only pages" if ocr_used else "Not needed"],
+        ["OCR fallback", "Used for image-only or low-quality pages" if ocr_used else "Not needed"],
         ["Extraction note", "Each detected table is kept in its own sheet. Document Text preserves text from every page."],
+        ["Audit sheet", "Audit contains source cell text, confidence and provenance when canonical processing is enabled."],
     ]
     for row in rows:
         sheet.append(row)
@@ -195,9 +204,73 @@ def _write_table(sheet, rows: list[list[str]], page: int, strategy: str) -> None
     sheet.append([f"Source page: {page}", f"Detection: {strategy}"])
     sheet.append([])
     for row in rows:
-        sheet.append(row)
+        sheet.append([_typed_excel_value(value) for value in row])
     sheet.freeze_panes = "A4"
     sheet.auto_filter.ref = f"A3:{get_column_letter(len(rows[0]))}{len(rows) + 2}"
+
+
+def _typed_excel_value(value: str) -> Any:
+    """Type only unambiguous numeric/currency values; preserve all other raw text."""
+    raw = _clean_cell(value)
+    if not raw:
+        return ""
+    compact = raw.replace(" ", "")
+    has_currency = bool(re.search(r"[$€£₫]|\b(?:VND|USD|EUR)\b|VNĐ", raw, re.I))
+    candidate = re.sub(r"[^0-9,.-]", "", compact)
+    if not re.fullmatch(r"[-+]?\d[\d.,]*", candidate):
+        return raw
+    if candidate.count(",") and candidate.count("."):
+        decimal_separator = "." if candidate.rfind(".") > candidate.rfind(",") else ","
+        thousands_separator = "," if decimal_separator == "." else "."
+        candidate = candidate.replace(thousands_separator, "").replace(decimal_separator, ".")
+    elif has_currency and candidate.count(".") > 1 and not candidate.endswith("."):
+        candidate = candidate.replace(".", "")
+    elif candidate.count(",") > 1:
+        candidate = candidate.replace(",", "")
+    try:
+        number = Decimal(candidate)
+    except InvalidOperation:
+        return raw
+    if abs(number) > Decimal("1e15"):
+        return raw
+    return int(number) if number == number.to_integral_value() else float(number)
+
+
+def _table_quality(table: ExtractedTable) -> dict[str, Any]:
+    width = max((len(row) for row in table.rows), default=0)
+    cells = [cell for row in table.rows for cell in row]
+    non_empty = sum(bool(cell) for cell in cells)
+    return {
+        "page": table.page,
+        "table": table.index,
+        "strategy": table.strategy,
+        "rows": max(0, len(table.rows) - 1),
+        "columns": width,
+        "cell_density": round(non_empty / max(1, len(cells)), 3),
+        "empty_cell_ratio": round(1 - (non_empty / max(1, len(cells))), 3),
+        "header_repeated": any(row == table.rows[0] for row in table.rows[1:]) if table.rows else False,
+    }
+
+
+def _write_audit_sheet(sheet, document: Any, tables: list[ExtractedTable]) -> None:
+    sheet.append(["Kind", "Page", "Object ID", "Raw value / quote", "Confidence", "Engine", "Evidence"])
+    if document is not None:
+        for page in document.pages:
+            for block in page.blocks:
+                evidence = block.evidence[0] if block.evidence else None
+                sheet.append(["block", page.page_number, block.block_id, block.text, block.confidence.value if block.confidence else None, block.confidence.source if block.confidence else "unknown", json.dumps(evidence.to_dict(), ensure_ascii=False) if evidence else ""])
+            for table in page.tables:
+                for row in table.rows:
+                    for cell in row:
+                        evidence = cell.evidence[0] if cell.evidence else None
+                        sheet.append(["cell", page.page_number, cell.cell_id, cell.text, cell.confidence.value if cell.confidence else None, cell.confidence.source if cell.confidence else table.source, json.dumps(evidence.to_dict(), ensure_ascii=False) if evidence else ""])
+    else:
+        for table in tables:
+            for row_index, row in enumerate(table.rows, start=1):
+                for column_index, value in enumerate(row, start=1):
+                    sheet.append(["legacy_cell", table.page, f"p{table.page}-t{table.index}-r{row_index}-c{column_index}", value, None, table.strategy, json.dumps({"page": table.page}, ensure_ascii=False)])
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:G{max(1, sheet.max_row)}"
 
 
 def _ocr_pdf(input_path: str) -> list[list[Any]]:

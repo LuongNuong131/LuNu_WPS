@@ -11,6 +11,8 @@ from app.document_ai.models import DocumentProfile, DocumentQuality, DocumentSou
 
 
 class DocumentProfiler:
+    """Profile a PDF once and expose page-level processing signals."""
+
     def profile(self, input_path: str) -> tuple[DocumentSource, DocumentProfile, DocumentQuality, dict[str, Any]]:
         path = Path(input_path)
         source = DocumentSource(
@@ -24,33 +26,78 @@ class DocumentProfiler:
         blank_pages = 0
         image_heavy_pages = 0
         table_pages = 0
-        page_count = 0
+        low_quality_pages = 0
         page_stats: list[dict[str, Any]] = []
         warnings: list[str] = []
+
         with pdfplumber.open(input_path) as pdf:
-            page_count = len(pdf.pages)
             for page_number, page in enumerate(pdf.pages, start=1):
                 text = (page.extract_text(x_tolerance=2, y_tolerance=3) or "").strip()
                 images = len(page.images or [])
                 tables = len(page.find_tables() or [])
-                if text:
+                chars = len(text)
+                native_text = chars >= 24
+                image_heavy = images > 0 and chars < 80
+                blank = not text and images == 0
+                vector_count = len(getattr(page, "rects", []) or []) + len(getattr(page, "lines", []) or [])
+                table_signal = tables > 0 or vector_count >= 8
+                quality_warnings: list[str] = []
+                if blank:
+                    quality_warnings.append("blank_page")
+                if image_heavy:
+                    quality_warnings.append("image_heavy")
+                if 0 < chars < 24:
+                    quality_warnings.append("sparse_native_text")
+                if native_text:
                     native_text_pages += 1
-                else:
-                    blank_pages += 1 if images == 0 else 0
-                if images and not text:
+                if blank:
+                    blank_pages += 1
+                if image_heavy:
                     image_heavy_pages += 1
-                if tables:
+                if table_signal:
                     table_pages += 1
-                page_stats.append({"page": page_number, "width": page.width, "height": page.height, "text_chars": len(text), "images": images, "tables": tables, "native_text": bool(text)})
-        ocr_pages = max(0, page_count - native_text_pages)
-        table_heavy = table_pages >= max(1, page_count // 3)
-        source_type = "native" if native_text_pages == page_count else "scan" if native_text_pages == 0 else "mixed"
-        complexity = "high" if table_heavy or page_count > 20 or image_heavy_pages > 5 else "medium" if page_count > 5 or ocr_pages else "low"
+                if image_heavy or (0 < chars < 24):
+                    low_quality_pages += 1
+                page_stats.append(
+                    {
+                        "page": page_number,
+                        "width": round(float(page.width), 2),
+                        "height": round(float(page.height), 2),
+                        "rotation": int(getattr(page, "rotation", 0) or 0),
+                        "text_chars": chars,
+                        "images": images,
+                        "tables": tables,
+                        "vector_objects": vector_count,
+                        "native_text": native_text,
+                        "image_heavy": image_heavy,
+                        "blank": blank,
+                        "table_signal": table_signal,
+                        "quality_warnings": quality_warnings,
+                        "ocr_recommended": bool(not native_text or image_heavy or quality_warnings),
+                    }
+                )
+
+        page_count = len(page_stats)
+        ocr_pages = sum(1 for item in page_stats if item["ocr_recommended"])
+        table_heavy = table_pages >= max(1, page_count // 3) if page_count else False
+        source_type = "native" if native_text_pages == page_count and page_count else "scan" if native_text_pages == 0 else "mixed"
+        complexity_score = min(
+            100,
+            (page_count * 2)
+            + (table_pages * 5)
+            + (image_heavy_pages * 6)
+            + (low_quality_pages * 4)
+            + (20 if table_heavy else 0),
+        )
+        complexity = "extreme" if complexity_score > 80 else "very_complex" if complexity_score > 60 else "complex" if complexity_score > 40 else "normal" if complexity_score > 20 else "easy"
         quality_label = "low" if blank_pages or image_heavy_pages else "medium" if ocr_pages else "high"
-        if page_count == 0:
+        if not page_count:
             warnings.append("empty_document")
         if image_heavy_pages:
             warnings.append("ocr_required_on_image_pages")
+        if low_quality_pages:
+            warnings.append("low_native_text_quality_on_some_pages")
+
         profile = DocumentProfile(
             document_type="pdf",
             source_type=source_type,
@@ -63,14 +110,20 @@ class DocumentProfiler:
         )
         quality = DocumentQuality(
             label=quality_label,
-            score=round((native_text_pages / page_count) if page_count else 0, 3),
+            score=round(1 - (ocr_pages / page_count), 3) if page_count else 0,
             native_text_pages=native_text_pages,
             ocr_pages=ocr_pages,
             blank_pages=blank_pages,
             low_resolution_pages=0,
             warnings=warnings,
         )
-        return source, profile, quality, {"page_stats": page_stats, "fingerprint": source.fingerprint}
+        diagnostics = {
+            "page_stats": page_stats,
+            "fingerprint": source.fingerprint,
+            "complexity_score": complexity_score,
+            "ocr_recommended_pages": [item["page"] for item in page_stats if item["ocr_recommended"]],
+        }
+        return source, profile, quality, diagnostics
 
 
 def _fingerprint(path: Path) -> str:

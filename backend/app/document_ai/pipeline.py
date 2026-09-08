@@ -28,7 +28,7 @@ from app.document_ai.semantics import extract_entities
 
 
 class PDFIntelligencePipeline:
-    """Create a canonical document model without coupling outputs to one converter."""
+    """Build a page-aware canonical document model for native and scanned PDFs."""
 
     def __init__(self, ocr_engine: TesseractEngine | None = None):
         self.ocr_engine = ocr_engine or TesseractEngine()
@@ -46,44 +46,69 @@ class PDFIntelligencePipeline:
         plan = ProcessingRouter().plan(profile, quality)
         document.diagnostics_data["processing_plan"] = plan.to_dict()
         document.processing_history.append(ProcessingEvent(stage="profile", status="completed", details={"plan": plan.to_dict()}))
-        with pdfplumber.open(input_path) as pdf:
+        page_stats = {item["page"]: item for item in profile_diagnostics.get("page_stats", [])}
+        ocr_diagnostics: list[dict[str, Any]] = []
+
+        with pdfplumber.open(input_path) as pdf, pymupdf.open(input_path) as raster_pdf:
             document.page_count = len(pdf.pages)
             for page_number, page in enumerate(pdf.pages, start=1):
-                canonical_page = DocumentPage(page_number, float(page.width), float(page.height), rotation=0)
-                text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
-                canonical_page.raw_text = text
-                canonical_page.blocks = _native_blocks(page, text, page_number)
+                canonical_page = DocumentPage(page_number, float(page.width), float(page.height), rotation=int(getattr(page, "rotation", 0) or 0))
+                native_text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
+                canonical_page.raw_text = native_text
+                canonical_page.blocks = _native_blocks(page, native_text, page_number)
                 canonical_page.tables = _native_tables(page, page_number)
-                if not canonical_page.blocks and ocr_enabled:
-                    ocr_result = self._ocr_page(input_path, page_number, ocr_language)
+                stats = page_stats.get(page_number, {})
+                should_ocr = bool(ocr_enabled and stats.get("ocr_recommended", not canonical_page.blocks))
+                if should_ocr:
+                    ocr_result = self._ocr_page(raster_pdf[page_number - 1], page_number, ocr_language)
                     canonical_page.ocr_used = bool(ocr_result.tokens)
                     canonical_page.language = ocr_result.language
-                    canonical_page.raw_text = ocr_result.text
-                    canonical_page.blocks = _ocr_blocks(ocr_result)
+                    if ocr_result.tokens:
+                        if native_text.strip():
+                            canonical_page.raw_text = f"{native_text.strip()}\n{ocr_result.text.strip()}".strip()
+                        else:
+                            canonical_page.raw_text = ocr_result.text
+                        canonical_page.blocks = _ocr_blocks(ocr_result)
                     if ocr_result.warnings:
-                        document.warnings.extend(ocr_result.warnings)
+                        document.warnings.extend(f"page_{page_number}:{warning}" for warning in ocr_result.warnings)
+                    page_quality = dict(stats)
+                    page_quality.update({
+                        "ocr": True,
+                        "engine": ocr_result.engine,
+                        "language": ocr_result.language,
+                        "selected_pass": ocr_result.selected_pass,
+                        "pass_scores": ocr_result.pass_scores,
+                        "average_confidence": ocr_result.average_confidence,
+                        "diagnostics": ocr_result.diagnostics,
+                    })
+                    canonical_page.image_quality = page_quality
+                    ocr_diagnostics.append({"page": page_number, **page_quality})
+                else:
+                    canonical_page.image_quality = {**stats, "ocr": False}
                 document.pages.append(canonical_page)
+
         document.profile.languages = sorted({page.language for page in document.pages if page.language})
         document.profile.table_heavy = document.profile.table_heavy or bool(document.all_tables)
+        document.diagnostics_data["ocr_pages"] = ocr_diagnostics
         document.processing_history.append(ProcessingEvent(stage="canonical_parse", status="completed"))
         if any(page.ocr_used for page in document.pages):
-            document.processing_history.append(ProcessingEvent(stage="ocr", status="completed", engine=self.ocr_engine.name))
+            document.processing_history.append(ProcessingEvent(stage="ocr", status="completed", engine=self.ocr_engine.name, details={"pages": [page.page_number for page in document.pages if page.ocr_used]}))
         _attach_provenance(document)
         document.entities = extract_entities(document)
         document.diagnostics_data["entities"] = len(document.entities)
         return document
 
-    def _ocr_page(self, input_path: str, page_number: int, language: str):
-        with pymupdf.open(input_path) as pdf:
-            page = pdf[page_number - 1]
-            pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2.2, 2.2), alpha=False)
-            image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-            prepared = prepare_for_ocr(image, "adaptive")
-            result = self.ocr_engine.recognize(prepared.image, page_number, language)
-            result.warnings.extend(prepared.warnings)
-            prepared.image.close()
-            image.close()
-            return result
+    def _ocr_page(self, pdf_page: Any, page_number: int, language: str):
+        pixmap = pdf_page.get_pixmap(matrix=pymupdf.Matrix(2.2, 2.2), alpha=False)
+        image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+        prepared = prepare_for_ocr(image, "contrast")
+        result = self.ocr_engine.recognize(prepared.image, page_number, language)
+        result.warnings.extend(prepared.warnings)
+        result.diagnostics["preprocessing_profile"] = prepared.profile
+        result.diagnostics["raster_size"] = [pixmap.width, pixmap.height]
+        prepared.image.close()
+        image.close()
+        return result
 
 
 def _native_blocks(page: Any, text: str, page_number: int) -> list[DocumentBlock]:
@@ -123,13 +148,11 @@ def _native_tables(page: Any, page_number: int) -> list[DocumentTable]:
         for raw in extracted:
             normalized = [[_clean(value) for value in row] for row in raw or []]
             normalized = [row for row in normalized if any(row)]
-            signature = tuple(tuple(row) for row in normalized[:4])
+            signature = (page_number, len(normalized), max((len(row) for row in normalized), default=0), tuple(tuple(row) for row in normalized[:3]), tuple(tuple(row) for row in normalized[-2:]))
             if len(normalized) < 2 or signature in signatures:
                 continue
             signatures.add(signature)
-            rows = []
-            for row in normalized:
-                rows.append([DocumentCell(value, confidence=Confidence.from_score(0.9, "pdf-table"), data_type=_data_type(value)) for value in row])
+            rows = [[DocumentCell(value, confidence=Confidence.from_score(0.9, "pdf-table"), data_type=_data_type(value)) for value in row] for row in normalized]
             tables.append(DocumentTable(page_number, rows, source="pdfplumber", confidence=Confidence.from_score(0.9, "pdf-table")))
     return tables
 
@@ -142,7 +165,7 @@ def _attach_provenance(document: CanonicalDocument) -> None:
             block.block_id = block.block_id or f"p{page.page_number}-b{index}"
             page.reading_order.append(block.block_id)
             confidence = block.confidence.value if block.confidence else 0.0
-            evidence = Evidence(document_id, page.page_number, block.bbox, block_id=block.block_id, quote=block.text, engine=block.confidence.source if block.confidence else "unknown", confidence=confidence)
+            evidence = Evidence(document_id, page.page_number, block.bbox, block_id=block.block_id, quote=block.text[:500], engine=block.confidence.source if block.confidence else "unknown", confidence=confidence)
             block.evidence = [evidence]
             document.provenance.append(evidence)
         for table_index, table in enumerate(page.tables, start=1):
@@ -154,14 +177,21 @@ def _attach_provenance(document: CanonicalDocument) -> None:
                 for column_index, cell in enumerate(row, start=1):
                     cell.cell_id = cell.cell_id or f"{table.table_id}-r{row_index}-c{column_index}"
                     confidence = cell.confidence.value if cell.confidence else table_confidence
-                    cell.evidence = [Evidence(document_id, page.page_number, cell.bbox, table_id=table.table_id, cell_id=cell.cell_id, quote=cell.text, engine=cell.confidence.source if cell.confidence else table.source, confidence=confidence)]
+                    cell.evidence = [Evidence(document_id, page.page_number, cell.bbox, table_id=table.table_id, cell_id=cell.cell_id, quote=cell.text[:500], engine=cell.confidence.source if cell.confidence else table.source, confidence=confidence)]
                     document.provenance.extend(cell.evidence)
 
 
 def _ocr_blocks(result: Any) -> list[DocumentBlock]:
+    grouped: dict[tuple[int, int], list[Any]] = {}
+    for token in result.tokens:
+        grouped.setdefault((token.block_number, token.line_number), []).append(token)
     blocks: list[DocumentBlock] = []
-    for index, token in enumerate(result.tokens, start=1):
-        blocks.append(DocumentBlock(BlockType.TEXT, token.text, token.bbox, token.page_number, index, token.confidence, attributes={"line": token.line_number, "block": token.block_number, "engine": result.engine}))
+    for index, tokens in enumerate(sorted(grouped.values(), key=lambda group: (min(t.bbox.top for t in group if t.bbox), min(t.bbox.x0 for t in group if t.bbox))), start=1):
+        tokens = sorted(tokens, key=lambda token: token.bbox.x0 if token.bbox else 0)
+        boxes = [token.bbox for token in tokens if token.bbox]
+        bbox = BoundingBox(min(box.x0 for box in boxes), min(box.top for box in boxes), max(box.x1 for box in boxes), max(box.bottom for box in boxes)) if boxes else None
+        confidence = sum(token.confidence.value for token in tokens) / max(1, len(tokens))
+        blocks.append(DocumentBlock(BlockType.TEXT, " ".join(token.text for token in tokens), bbox, tokens[0].page_number, index, Confidence.from_score(confidence, result.engine), attributes={"line": tokens[0].line_number, "block": tokens[0].block_number, "engine": result.engine, "selected_pass": result.selected_pass}))
     return blocks
 
 
@@ -172,10 +202,11 @@ def _clean(value: Any) -> str:
 def _data_type(value: str) -> str:
     if not value:
         return "empty"
-    if re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?", value.replace(" ", "")):
+    compact = value.replace(" ", "")
+    if re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?", compact):
         return "number"
     if re.fullmatch(r"\d{1,4}[/-]\d{1,2}[/-]\d{1,4}", value):
         return "date"
-    if re.search(r"[$€£₫%]", value):
+    if re.search(r"[$€£₫%]|\b(?:VND|USD|EUR)\b", value, re.I):
         return "currency"
     return "text"

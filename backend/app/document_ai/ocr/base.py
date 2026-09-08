@@ -27,6 +27,9 @@ class OCRPageResult:
     language: str | None = None
     engine: str = "unknown"
     warnings: list[str] = field(default_factory=list)
+    selected_pass: int | None = None
+    pass_scores: dict[str, float] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     @property
     def average_confidence(self) -> float | None:
