@@ -37,6 +37,9 @@ def test_native_pipeline_has_stable_evidence(tmp_path: Path) -> None:
     assert document.source and len(document.source.fingerprint or "") == 64
     assert document.pages[0].reading_order
     assert document.provenance
+    assert document.state.value in {"ready", "review_required"}
+    assert document.pipeline_version.pipeline_version == "4.0.0"
+    assert document.quality_dimensions.evidence_coverage is not None
     assert json.dumps(document.diagnostics(), default=str)
 
 
@@ -68,3 +71,6 @@ def test_pdf_to_excel_contains_text_tables_and_audit(tmp_path: Path) -> None:
     assert workbook["Audit"].max_row > 1
     assert processor.last_diagnostics["audit_available"] is True
     assert processor.last_diagnostics["pages"] == 1
+    assert processor.last_diagnostics["document_state"] in {"ready", "review_required"}
+    assert "quality_dimensions" in processor.last_diagnostics
+    assert "validation_results" in processor.last_diagnostics

@@ -76,3 +76,13 @@ cd .. && git diff --check
 Giới hạn upload hiện tại là 25 MB mỗi file và tối đa 10 file theo tool. Input tạm được lưu trong job directory và dọn sau khi xử lý; output không bị xóa trước download. Chưa có persistence database hay cleanup TTL tự động cho output production. SHA-256 chỉ là fingerprint nội bộ, không phải cam kết bảo mật hoặc deduplication persistence. Không nên gửi tài liệu nhạy cảm vào môi trường chưa được harden theo chính sách triển khai của bạn.
 
 OCR và table reconstruction là các quá trình xác suất/heuristic. OfficeFlow công khai confidence, warning và evidence để người dùng kiểm tra; không tuyên bố tái tạo 100% mọi PDF scan hoặc layout bất thường.
+
+## Document Brain 4.0 contracts
+
+Canonical documents expose a versioned `DocumentState` lifecycle: `uploaded`, `identified`, `profiled`, `understanding`, `extracted`, `validated`, `review_required`, `ready` và `failed`. Mỗi kết quả cũng lưu `PipelineVersion` để biết phiên bản pipeline, OCR, layout, table, semantic và export đã tạo ra artifact.
+
+Quality không được suy đoán thành một con số duy nhất. `quality_dimensions` giữ các thành phần source confidence, OCR confidence, layout confidence, semantic confidence, consistency confidence, evidence coverage và overall score. Mỗi thành phần được tính từ metrics có trong canonical result và có thể kiểm tra trong diagnostics.
+
+Validation deterministic kiểm tra evidence coverage, độ nhất quán số cột của table và tính hợp lý sơ bộ của các giá trị tiền tệ. Khi entity quan trọng có confidence thấp hoặc thiếu evidence, hệ thống tạo `ReviewTask` với field, raw value, priority, reason, confidence và evidence. Review task không sửa raw source value; nó chỉ đánh dấu phần cần người dùng kiểm tra.
+
+Các layer như knowledge graph, multi-document aggregation, document comparison, RAG và workflow automation vẫn là extension points tương lai. Chúng không được giả lập trong giao diện khi backend chưa thực sự cung cấp capability tương ứng.

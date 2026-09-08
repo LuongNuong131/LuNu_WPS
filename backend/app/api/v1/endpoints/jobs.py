@@ -119,6 +119,11 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
                 "ocr_pages": diagnostics.get("ocr_pages", 0),
                 "low_confidence_count": diagnostics.get("low_confidence_cells", 0),
                 "warnings": diagnostics.get("warnings", []),
+                "document_state": diagnostics.get("document_state", "unknown"),
+                "quality_dimensions": diagnostics.get("quality_dimensions", {}),
+                "validation_results": diagnostics.get("validation_results", []),
+                "review_tasks": diagnostics.get("review_tasks", []),
+                "review_required": bool(diagnostics.get("review_tasks")),
                 "audit_available": bool(diagnostics),
                 "diagnostics": diagnostics,
             })

@@ -8,6 +8,7 @@ import pdfplumber
 import pymupdf
 from PIL import Image
 
+from app.document_ai.contracts import DocumentState
 from app.document_ai.models import (
     BlockType,
     BoundingBox,
@@ -25,6 +26,7 @@ from app.document_ai.preprocess.image import prepare_for_ocr
 from app.document_ai.profile import DocumentProfiler
 from app.document_ai.routing import ProcessingRouter
 from app.document_ai.semantics import extract_entities
+from app.document_ai.validation import validate_document
 
 
 class PDFIntelligencePipeline:
@@ -40,12 +42,16 @@ class PDFIntelligencePipeline:
         document = CanonicalDocument(source_filename=Path(input_path).name, page_count=0)
         source, profile, quality, profile_diagnostics = DocumentProfiler().profile(input_path)
         document.source = source
+        document.state = DocumentState.IDENTIFIED
         document.profile = profile
+        document.state = DocumentState.PROFILED
         document.quality = quality
+        document.quality_dimensions.source_confidence = round(1.0 if profile.source_type == "native" else 0.75 if profile.source_type == "mixed" else 0.55, 4)
         document.diagnostics_data.update(profile_diagnostics)
         plan = ProcessingRouter().plan(profile, quality)
         document.diagnostics_data["processing_plan"] = plan.to_dict()
         document.processing_history.append(ProcessingEvent(stage="profile", status="completed", details={"plan": plan.to_dict()}))
+        document.state = DocumentState.UNDERSTANDING
         page_stats = {item["page"]: item for item in profile_diagnostics.get("page_stats", [])}
         ocr_diagnostics: list[dict[str, Any]] = []
 
@@ -89,13 +95,30 @@ class PDFIntelligencePipeline:
 
         document.profile.languages = sorted({page.language for page in document.pages if page.language})
         document.profile.table_heavy = document.profile.table_heavy or bool(document.all_tables)
+        ocr_confidences = [page.image_quality.get("average_confidence") for page in document.pages if page.ocr_used and page.image_quality.get("average_confidence") is not None]
+        document.quality_dimensions.ocr_confidence = round(sum(ocr_confidences) / len(ocr_confidences), 4) if ocr_confidences else (1.0 if not any(page.ocr_used for page in document.pages) else 0.0)
+        document.quality_dimensions.layout_confidence = round(sum(1.0 if page.reading_order else 0.0 for page in document.pages) / max(1, len(document.pages)), 4)
         document.diagnostics_data["ocr_pages"] = ocr_diagnostics
         document.processing_history.append(ProcessingEvent(stage="canonical_parse", status="completed"))
         if any(page.ocr_used for page in document.pages):
             document.processing_history.append(ProcessingEvent(stage="ocr", status="completed", engine=self.ocr_engine.name, details={"pages": [page.page_number for page in document.pages if page.ocr_used]}))
         _attach_provenance(document)
         document.entities = extract_entities(document)
+        document.state = DocumentState.EXTRACTED
         document.diagnostics_data["entities"] = len(document.entities)
+        document.validation_results, document.review_tasks = validate_document(document)
+        valid_results = sum(1 for result in document.validation_results if result.status == "valid")
+        document.quality_dimensions.consistency_confidence = round(valid_results / max(1, len(document.validation_results)), 4)
+        entity_confidences = [entity.confidence.value for entity in document.entities if entity.confidence]
+        document.quality_dimensions.semantic_confidence = round(sum(entity_confidences) / len(entity_confidences), 4) if entity_confidences else None
+        dimensions = [value for value in (document.quality_dimensions.source_confidence, document.quality_dimensions.ocr_confidence, document.quality_dimensions.layout_confidence, document.quality_dimensions.semantic_confidence, document.quality_dimensions.consistency_confidence, document.quality_dimensions.evidence_coverage) if value is not None]
+        document.quality_dimensions.overall = round(sum(dimensions) / len(dimensions), 4) if dimensions else None
+        if document.review_tasks:
+            document.state = DocumentState.REVIEW_REQUIRED
+            document.warnings.append(f"review_required:{len(document.review_tasks)}")
+        else:
+            document.state = DocumentState.READY
+        document.processing_history.append(ProcessingEvent(stage="validation", status="completed", details={"review_tasks": len(document.review_tasks), "state": document.state.value}))
         return document
 
     def _ocr_page(self, pdf_page: Any, page_number: int, language: str):

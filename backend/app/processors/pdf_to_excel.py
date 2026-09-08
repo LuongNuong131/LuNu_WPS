@@ -100,6 +100,11 @@ class PDFToExcelProcessor(DocumentProcessor):
             _write_text_sheet(text_sheet, text_rows)
         audit_sheet = workbook.create_sheet("Audit")
         _write_audit_sheet(audit_sheet, document, tables)
+        if document is not None:
+            self.last_diagnostics["document_state"] = document.state.value
+            self.last_diagnostics["quality_dimensions"] = document.quality_dimensions.to_dict()
+            self.last_diagnostics["validation_results"] = [item.to_dict() for item in document.validation_results]
+            self.last_diagnostics["review_tasks"] = [item.to_dict() for item in document.review_tasks]
         self.last_diagnostics["audit_available"] = True
         self.last_diagnostics["workbook_sheets"] = list(workbook.sheetnames)
         self.last_diagnostics["table_quality"] = [_table_quality(table) for table in tables]
@@ -255,6 +260,7 @@ def _table_quality(table: ExtractedTable) -> dict[str, Any]:
 def _write_audit_sheet(sheet, document: Any, tables: list[ExtractedTable]) -> None:
     sheet.append(["Kind", "Page", "Object ID", "Raw value / quote", "Confidence", "Engine", "Evidence"])
     if document is not None:
+        sheet.append(["document", "", "state", document.state.value, document.quality_dimensions.overall, "pipeline", json.dumps({"quality": document.quality_dimensions.to_dict(), "review_tasks": len(document.review_tasks)}, ensure_ascii=False)])
         for page in document.pages:
             for block in page.blocks:
                 evidence = block.evidence[0] if block.evidence else None

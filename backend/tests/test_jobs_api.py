@@ -36,4 +36,8 @@ def test_pdf_to_excel_job_returns_metadata(tmp_path: Path) -> None:
     assert body["status"] == "SUCCESS"
     assert body["result_metadata"]["pages"] == 1
     assert body["result_metadata"]["audit_available"] is True
+    assert body["result_metadata"]["document_state"] in {"ready", "review_required"}
+    assert "quality_dimensions" in body["result_metadata"]
+    assert "validation_results" in body["result_metadata"]
+    assert "review_tasks" in body["result_metadata"]
     assert client.get(f"/api/v1/jobs/{job_id}/download").status_code == 200

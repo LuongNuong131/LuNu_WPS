@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from app.document_ai.contracts import DocumentState, PipelineVersion, QualityDimensions, ReviewTask, ValidationResult
+
 
 class BlockType(str, Enum):
     TEXT = "text"
@@ -215,8 +217,13 @@ class CanonicalDocument:
     provenance: list[Evidence] = field(default_factory=list)
     processing_history: list[ProcessingEvent] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-
+    state: DocumentState = DocumentState.UPLOADED
+    pipeline_version: PipelineVersion = field(default_factory=PipelineVersion)
+    quality_dimensions: QualityDimensions = field(default_factory=QualityDimensions)
+    validation_results: list[ValidationResult] = field(default_factory=list)
+    review_tasks: list[ReviewTask] = field(default_factory=list)
     @property
+
     def all_tables(self) -> list[DocumentTable]:
         return [table for page in self.pages for table in page.tables]
 
@@ -243,6 +250,11 @@ class CanonicalDocument:
             "quality": self.quality.__dict__ if self.quality else None,
             "processing_stages": [event.stage for event in self.processing_history],
             "warnings": [*self.warnings, *(self.quality.warnings if self.quality else [])],
+            "state": self.state.value,
+            "pipeline_version": self.pipeline_version.to_dict(),
+            "quality_dimensions": self.quality_dimensions.to_dict(),
+            "validation_results": [item.to_dict() for item in self.validation_results],
+            "review_tasks": [item.to_dict() for item in self.review_tasks],
         }
         result.update(self.diagnostics_data)
         return result
