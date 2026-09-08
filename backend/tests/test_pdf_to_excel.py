@@ -12,7 +12,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
-from app.processors.pdf_to_excel import PDFToExcelProcessor, _typed_excel_value
+from app.processors.pdf_to_excel import ExtractedTable, PDFToExcelProcessor, _merge_continuation_tables, _typed_excel_value
 
 
 def make_native_pdf(path: Path) -> None:
@@ -78,3 +78,25 @@ def test_pdf_to_excel_contains_text_tables_and_audit(tmp_path: Path) -> None:
     assert "validation_results" in processor.last_diagnostics
     assert processor.last_diagnostics["facts"] >= 1
     assert "graph_edges" in processor.last_diagnostics
+
+
+def test_adjacent_tables_with_repeated_header_are_merged() -> None:
+    tables = [
+        ExtractedTable(1, 1, [["Item", "Amount"], ["A", "10"]], "lines", [1]),
+        ExtractedTable(2, 1, [[" item ", "AMOUNT"], ["B", "20"]], "lines", [2]),
+    ]
+    merged, count = _merge_continuation_tables(tables)
+    assert count == 1
+    assert len(merged) == 1
+    assert merged[0].source_pages == [1, 2]
+    assert merged[0].rows == [["Item", "Amount"], ["A", "10"], ["B", "20"]]
+
+
+def test_non_adjacent_or_different_headers_are_not_merged() -> None:
+    tables = [
+        ExtractedTable(1, 1, [["Item", "Amount"], ["A", "10"]], "lines", [1]),
+        ExtractedTable(3, 1, [["Item", "Total"], ["B", "20"]], "lines", [3]),
+    ]
+    merged, count = _merge_continuation_tables(tables)
+    assert count == 0
+    assert len(merged) == 2

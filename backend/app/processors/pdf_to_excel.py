@@ -24,6 +24,7 @@ class ExtractedTable:
     index: int
     rows: list[list[str]]
     strategy: str
+    source_pages: list[int] | None = None
 
 
 class PDFToExcelProcessor(DocumentProcessor):
@@ -66,7 +67,7 @@ class PDFToExcelProcessor(DocumentProcessor):
                     for table_index, table in enumerate(page.tables, start=1):
                         rows = _normalize_rows([[cell.text for cell in row] for row in table.rows])
                         if len(rows) >= 2:
-                            tables.append(ExtractedTable(page.page_number, table_index, rows, table.source))
+                            tables.append(ExtractedTable(page.page_number, table_index, rows, table.source, [page.page_number]))
         else:
             with pdfplumber.open(input_paths[0]) as pdf:
                 page_count = len(pdf.pages)
@@ -87,6 +88,8 @@ class PDFToExcelProcessor(DocumentProcessor):
         if not tables and not text_rows:
             raise ValueError("PDF không chứa lớp văn bản hoặc bảng có thể trích xuất. Đây có thể là PDF scan; hãy bật OCR ở pipeline OCR.")
 
+        tables, merged_table_count = _merge_continuation_tables(tables)
+
         workbook = Workbook()
         summary = workbook.active
         summary.title = "Overview"
@@ -94,7 +97,7 @@ class PDFToExcelProcessor(DocumentProcessor):
         for table in tables:
             sheet_name = _safe_sheet_name(f"Page {table.page} · Table {table.index}", workbook)
             sheet = workbook.create_sheet(sheet_name)
-            _write_table(sheet, table.rows, table.page, table.strategy)
+            _write_table(sheet, table.rows, table.page, table.strategy, table.source_pages)
         if include_text and text_rows:
             text_sheet = workbook.create_sheet("Document Text")
             _write_text_sheet(text_sheet, text_rows)
@@ -112,6 +115,8 @@ class PDFToExcelProcessor(DocumentProcessor):
         self.last_diagnostics["audit_available"] = True
         self.last_diagnostics["workbook_sheets"] = list(workbook.sheetnames)
         self.last_diagnostics["table_quality"] = [_table_quality(table) for table in tables]
+        self.last_diagnostics["merged_table_count"] = merged_table_count
+        self.last_diagnostics["multi_page_tables"] = sum(1 for table in tables if len(table.source_pages or [table.page]) > 1)
         _style_workbook(workbook)
         workbook.save(output_path)
         return True
@@ -137,8 +142,44 @@ def _extract_page_tables(page: pdfplumber.page.Page, page_number: int) -> list[E
             if signature in signatures:
                 continue
             signatures.add(signature)
-            found.append(ExtractedTable(page_number, len(found) + 1, rows, strategy_name))
+            found.append(ExtractedTable(page_number, len(found) + 1, rows, strategy_name, [page_number]))
     return found
+
+
+def _merge_continuation_tables(tables: list[ExtractedTable]) -> tuple[list[ExtractedTable], int]:
+    """Merge adjacent page tables when the continuation header is identical.
+
+    The conservative rule requires consecutive pages and an identical normalized
+    header. It avoids merging unrelated tables merely because they have the same
+    width, while preserving the repeated-header evidence in the diagnostics.
+    """
+    merged: list[ExtractedTable] = []
+    merge_count = 0
+    for table in tables:
+        current = table
+        current_pages = current.source_pages or [current.page]
+        if merged:
+            previous = merged[-1]
+            previous_pages = previous.source_pages or [previous.page]
+            can_merge = (
+                current_pages[0] == previous_pages[-1] + 1
+                and _header_signature(previous.rows) == _header_signature(current.rows)
+                and len(previous.rows[0]) == len(current.rows[0])
+            )
+            if can_merge:
+                previous.rows.extend(current.rows[1:])
+                previous.source_pages = previous_pages + current_pages
+                merge_count += 1
+                continue
+        current.source_pages = current_pages
+        merged.append(current)
+    return merged, merge_count
+
+
+def _header_signature(rows: list[list[str]]) -> tuple[str, ...]:
+    if not rows:
+        return ()
+    return tuple(re.sub(r"\s+", " ", value).strip().casefold() for value in rows[0])
 
 
 def _normalize_rows(raw_rows: list[list[Any]]) -> list[list[str]]:
@@ -206,11 +247,12 @@ def _write_overview(sheet, input_path: str, page_count: int, tables: list[Extrac
     sheet.append([])
     sheet.append(["Table", "Page", "Strategy", "Rows", "Columns"])
     for table in tables:
-        sheet.append([f"Table {table.index}", table.page, table.strategy, len(table.rows) - 1, len(table.rows[0])])
+        sheet.append([f"Table {table.index}", ", ".join(map(str, table.source_pages or [table.page])), table.strategy, len(table.rows) - 1, len(table.rows[0])])
 
 
-def _write_table(sheet, rows: list[list[str]], page: int, strategy: str) -> None:
-    sheet.append([f"Source page: {page}", f"Detection: {strategy}"])
+def _write_table(sheet, rows: list[list[str]], page: int, strategy: str, source_pages: list[int] | None = None) -> None:
+    pages = ", ".join(map(str, source_pages or [page]))
+    sheet.append([f"Source pages: {pages}", f"Detection: {strategy}"])
     sheet.append([])
     for row in rows:
         sheet.append([_typed_excel_value(value) for value in row])
@@ -251,6 +293,7 @@ def _table_quality(table: ExtractedTable) -> dict[str, Any]:
     non_empty = sum(bool(cell) for cell in cells)
     return {
         "page": table.page,
+        "source_pages": table.source_pages or [table.page],
         "table": table.index,
         "strategy": table.strategy,
         "rows": max(0, len(table.rows) - 1),

@@ -8,6 +8,7 @@ OfficeFlow là dự án cộng đồng miễn phí, local/open-source-first, t�
 |---|---|---|
 | PDF/Office conversion workflows | Implemented | Chạy qua API và processor hiện có. |
 | PDF → Excel Document Brain | Implemented | Có native extraction, OCR fallback, evidence, truth, validation và audit. |
+| Multi-page table continuation | Partial | Merge bảo thủ khi các bảng ở trang liền kề có repeated header tương đương; merged cells phức tạp vẫn cần review. |
 | Upload and artifact boundary hardening | Implemented | Kiểm tra extension, giới hạn kích thước, file rỗng, path artifact và lỗi output. |
 | Job persistence and restart recovery | Partial | Metadata job đã lưu SQLite; job đang chạy khi restart được đánh dấu cần retry. Durable worker recovery vẫn chưa có. |
 | Authentication, ownership and authorization | Planned | Chưa có identity model; không được xem là production privacy boundary. |
@@ -15,6 +16,8 @@ OfficeFlow là dự án cộng đồng miễn phí, local/open-source-first, t�
 | Document library and synchronized history | Planned | Frontend history hiện chỉ lưu trên thiết bị. |
 
 Chi tiết gap, rủi ro và migration plan nằm trong [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) và [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md).
+
+Gap matrix định lượng riêng cho flagship PDF → Excel nằm trong [PDF_EXCEL_GAP_MATRIX.md](PDF_EXCEL_GAP_MATRIX.md). Điểm số trong ma trận là đánh giá engineering hiện trạng, không phải accuracy benchmark trên corpus bên ngoài.
 
 ## Các workflow hiện có
 
@@ -24,7 +27,7 @@ Repository giữ các workflow PDF và Office hiện có: PDF → Excel, Merge P
 
 PDF → Excel sử dụng ba mode. **Adaptive** dùng canonical document pipeline, native extraction và OCR fallback theo từng trang. **Tables** ưu tiên các bảng phát hiện được và không thêm sheet text. **Text** giữ toàn bộ text đọc được theo trang/dòng. Khi tài liệu có text native tốt, native layer được ưu tiên; OCR chỉ chạy ở trang trống, image-heavy, sparse hoặc có tín hiệu chất lượng thấp.
 
-Workbook có `Overview`, các sheet bảng, `Document Text` khi được bật và `Audit`. Audit giữ raw text, object ID, page, confidence, engine và evidence JSON. Giá trị số hoặc tiền tệ chỉ được chuyển thành kiểu Excel khi parse đủ rõ ràng; raw text không bị âm thầm ghi đè. Scan mờ, merged cells phức tạp, bảng nghiêng, biểu đồ và layout cực phức tạp có thể cần review thủ công; hệ thống ghi warning thay vì cam kết khôi phục hoàn hảo.
+Workbook có `Overview`, các sheet bảng, `Document Text` khi được bật và `Audit`. Audit giữ raw text, object ID, page, confidence, engine và evidence JSON. Giá trị số hoặc tiền tệ chỉ được chuyển thành kiểu Excel khi parse đủ rõ ràng; raw text không bị âm thầm ghi đè. Các bảng ở trang liền kề có repeated header tương đương được merge vào một worksheet và diagnostics giữ `source_pages`, `merged_table_count` và `multi_page_tables`. Scan mờ, merged cells phức tạp, bảng nghiêng, biểu đồ và layout cực phức tạp có thể cần review thủ công; hệ thống ghi warning thay vì cam kết khôi phục hoàn hảo.
 
 ## Kiến trúc Document Intelligence
 

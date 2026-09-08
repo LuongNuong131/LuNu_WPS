@@ -17,6 +17,7 @@ Milestone hiện tại harden boundary của job lifecycle mà không thay đổ
 | Artifact storage | Local output directory, generated filename, no TTL cleanup | Partial |
 | Document intelligence | Canonical PDF pipeline with native extraction and Tesseract adapter | Implemented |
 | Truth and evidence | Facts, typed graph edges, validation and review tasks | Implemented for PDF → Excel |
+| Multi-page table intelligence | Conservative adjacent-page repeated-header merge with source-page diagnostics | Partial |
 | Authentication | None | Planned |
 | Ownership and authorization | None; resources are addressed by job ID | Planned / security gap |
 | Durable persistence | SQLite job metadata for local/test; no PostgreSQL migrations yet | Partial |
@@ -50,8 +51,9 @@ The highest-impact gaps are identity, authorization, PostgreSQL persistence, dur
 2. **M02-A — Local persistence foundation:** add SQLite `JobStore`, explicit schema constraints, restart-state recovery and health/readiness checks. Completed in this change.
 3. **M02-B — Identity foundation:** introduce explicit user/session identity only after selecting the deployment trust model. Do not infer ownership from an untrusted client field.
 4. **M03 — Durable production persistence:** add migrations and persistent records for users, documents, jobs, artifacts, pipeline versions and review tasks. Keep local filesystem storage behind an artifact service.
-5. **M04 — Restartable execution:** move processing to a durable queue and worker with idempotency, leases and recovery semantics.
-6. **M05 — Workspace and review:** expose persisted documents, evidence and review tasks in the frontend with authorization checks.
+5. **M03-A — Flagship table intelligence:** merge conservative multi-page continuations, preserve source pages and add regression coverage. Completed in this change.
+6. **M04 — Restartable execution:** move processing to a durable queue and worker with idempotency, leases and recovery semantics.
+7. **M05 — Workspace and review:** expose persisted documents, evidence and review tasks in the frontend with authorization checks.
 
 ## Risks
 
