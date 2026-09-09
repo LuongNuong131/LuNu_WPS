@@ -181,7 +181,7 @@ def _native_tables(page: Any, page_number: int) -> list[DocumentTable]:
             if len(normalized) < 2 or signature in signatures:
                 continue
             signatures.add(signature)
-            rows = [[DocumentCell(value, confidence=Confidence.from_score(0.9, "pdf-table"), data_type=_data_type(value)) for value in row] for row in normalized]
+            rows = [[DocumentCell(value, confidence=Confidence.from_score(0.9, "pdf-table"), data_type=_data_type(value), page_number=page_number) for value in row] for row in normalized]
             tables.append(DocumentTable(page_number, rows, source="pdfplumber", confidence=Confidence.from_score(0.9, "pdf-table")))
     return tables
 
@@ -205,6 +205,7 @@ def _attach_provenance(document: CanonicalDocument) -> None:
             for row_index, row in enumerate(table.rows, start=1):
                 for column_index, cell in enumerate(row, start=1):
                     cell.cell_id = cell.cell_id or f"{table.table_id}-r{row_index}-c{column_index}"
+                    cell.page_number = page.page_number
                     confidence = cell.confidence.value if cell.confidence else table_confidence
                     cell.evidence = [Evidence(document_id, page.page_number, cell.bbox, table_id=table.table_id, cell_id=cell.cell_id, quote=cell.text[:500], engine=cell.confidence.source if cell.confidence else table.source, confidence=confidence)]
                     document.provenance.extend(cell.evidence)

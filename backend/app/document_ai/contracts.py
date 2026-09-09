@@ -71,6 +71,7 @@ class DocumentFact:
     confidence: float = 0.0
     evidence: list[dict[str, Any]] = field(default_factory=list)
     explanation: list[str] = field(default_factory=list)
+    page_number: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)

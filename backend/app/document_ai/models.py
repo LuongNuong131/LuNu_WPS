@@ -147,6 +147,7 @@ class DocumentCell:
     data_type: str = "text"
     cell_id: str | None = None
     evidence: list[Evidence] = field(default_factory=list)
+    page_number: int = 1
 
 
 @dataclass
@@ -232,6 +233,15 @@ class CanonicalDocument:
     @property
     def all_blocks(self) -> list[DocumentBlock]:
         return [block for page in self.pages for block in page.blocks]
+
+    @property
+    def full_text(self) -> str:
+        """Return every page's raw text in deterministic document reading order."""
+        sections = []
+        for page in sorted(self.pages, key=lambda item: item.page_number):
+            text = page.raw_text.strip()
+            sections.append(f"--- Page {page.page_number} ---\n{text}" if text else f"--- Page {page.page_number} ---")
+        return "\n\n".join(sections)
 
     def diagnostics(self) -> dict[str, Any]:
         confidences = [

@@ -23,6 +23,7 @@ def build_truth_model(document: CanonicalDocument) -> None:
             confidence=confidence,
             evidence=evidence,
             explanation=["matched deterministic semantic pattern", "retains source evidence"],
+            page_number=(entity.evidence[0].page_number if entity.evidence and entity.evidence[0].page_number else 1),
         )
         facts.append(fact)
         by_name[entity.entity_type].append(fact)
