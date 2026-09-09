@@ -94,7 +94,10 @@ class PDFToExcelProcessor(DocumentProcessor):
         workbook = Workbook()
         summary = workbook.active
         summary.title = "Overview"
-        _write_overview(summary, input_paths[0], page_count, tables, text_rows, ocr_used)
+        _write_overview(summary, input_paths[0], page_count, tables, text_rows, ocr_used, document)
+        if tables:
+            line_items = workbook.create_sheet("Line Items")
+            _write_table(line_items, tables[0].rows, tables[0].page, tables[0].strategy, tables[0].source_pages)
         for table in tables:
             sheet_name = _safe_sheet_name(f"Page {table.page} · Table {table.index}", workbook)
             sheet = workbook.create_sheet(sheet_name)
@@ -257,7 +260,7 @@ def _clean_cell(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value).replace("\u00a0", " ")).strip()
 
 
-def _write_overview(sheet, input_path: str, page_count: int, tables: list[ExtractedTable], text_rows: list[list[Any]], ocr_used: bool) -> None:
+def _write_overview(sheet, input_path: str, page_count: int, tables: list[ExtractedTable], text_rows: list[list[Any]], ocr_used: bool, document: Any = None) -> None:
     rows = [
         ["OfficeFlow PDF → Excel", "Extraction report"],
         ["Source file", input_path.split("/")[-1]],
@@ -271,9 +274,24 @@ def _write_overview(sheet, input_path: str, page_count: int, tables: list[Extrac
     for row in rows:
         sheet.append(row)
     sheet.append([])
+    sheet.append(["Invoice metadata", "Value", "Confidence", "Evidence"])
+    if document is not None:
+        preferred = {"Invoice_Number", "Date", "Tax_Code", "VAT_Rate", "Subtotal", "Grand_Total"}
+        for entity in document.entities:
+            if entity.entity_type in preferred:
+                evidence = entity.evidence[0] if entity.evidence else None
+                sheet.append([entity.entity_type, entity.normalized_value if entity.normalized_value is not None else entity.raw_value, entity.confidence.value if entity.confidence else None, json.dumps(evidence.to_dict(), ensure_ascii=False) if evidence else ""])
+    sheet.append([])
     sheet.append(["Table", "Page", "Strategy", "Rows", "Columns"])
     for table in tables:
         sheet.append([f"Table {table.index}", ", ".join(map(str, table.source_pages or [table.page])), table.strategy, len(table.rows) - 1, len(table.rows[0])])
+    for row in sheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    sheet.column_dimensions["A"].width = 24
+    sheet.column_dimensions["B"].width = 42
+    sheet.column_dimensions["C"].width = 16
+    sheet.column_dimensions["D"].width = 64
 
 
 def _write_table(sheet, rows: list[list[str]], page: int, strategy: str, source_pages: list[int] | None = None) -> None:
