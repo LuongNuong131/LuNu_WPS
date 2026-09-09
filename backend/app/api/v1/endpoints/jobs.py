@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Any, List
 
@@ -18,6 +19,7 @@ from app.queue import enqueue_job
 from app.tool_registry import get_tool
 
 router = APIRouter()
+logger = logging.getLogger("officeflow.jobs")
 MAX_FILE_SIZE = 25 * 1024 * 1024
 MAX_FILES = 10
 _ALLOWED_OCR_CODES = {"eng", "vie", "chi_sim", "jpn", "kor", "tha", "ind", "fra", "deu", "spa", "por", "ita", "rus", "ara"}
@@ -105,6 +107,7 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
         _cleanup(input_paths)
         return
     job.status = JobStatus.PROCESSING
+    logger.info("job_processing", extra={"job_id": job_id, "document_id": job_id, "tool_slug": tool_slug})
     job.progress = 10
     job_store.save(job)
     processor = get_processor(tool_slug)
@@ -151,6 +154,7 @@ def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, option
             })
             job_store.save(job)
     except Exception as exc:
+        logger.exception("job_processing_failed", extra={"job_id": job_id, "document_id": job_id, "tool_slug": tool_slug})
         job.status = JobStatus.FAILED
         job.error_message = _public_error(exc)
         job.completed_at = datetime.now(timezone.utc)

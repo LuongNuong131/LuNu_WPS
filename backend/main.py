@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.api.v1.endpoints.jobs import job_store
+from app.core.logging import configure_logging
+
+configure_logging(settings.LOG_LEVEL)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

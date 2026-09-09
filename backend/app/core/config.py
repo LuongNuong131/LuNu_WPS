@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-in-production-use-a-32-byte-secret"
     JWT_EXPIRE_MINUTES: int = 60 * 24
     AUTH_REQUIRED: bool = False
+    LOG_LEVEL: str = "INFO"
     
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
