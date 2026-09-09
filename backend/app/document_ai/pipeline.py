@@ -132,6 +132,8 @@ class PDFIntelligencePipeline:
         result = self.ocr_engine.recognize(prepared.image, page_number, language)
         result.warnings.extend(prepared.warnings)
         result.diagnostics["preprocessing_profile"] = prepared.profile
+        result.diagnostics["deskew_angle"] = prepared.deskew_angle
+        result.diagnostics["deskew_applied"] = bool(prepared.deskew_angle)
         result.diagnostics["raster_size"] = [pixmap.width, pixmap.height]
         prepared.image.close()
         image.close()

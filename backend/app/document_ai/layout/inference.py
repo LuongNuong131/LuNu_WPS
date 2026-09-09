@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import sqrt
 from typing import Sequence
 
 
@@ -21,12 +22,6 @@ class CellSpan:
 
 
 def infer_spans(rows: Sequence[Sequence[str]]) -> list[CellSpan]:
-    """Infer conservative rectangular spans from blank continuation cells.
-
-    PDF table extractors commonly place a merged value in the top-left cell and
-    emit empty cells for the covered area. We only merge when every covered cell
-    is empty, preventing destructive guesses on ordinary sparse tables.
-    """
     if not rows:
         return []
     width = max((len(row) for row in rows), default=0)
@@ -41,22 +36,16 @@ def infer_spans(rows: Sequence[Sequence[str]]) -> list[CellSpan]:
             while c + col_span < width and not matrix[r][c + col_span] and (r, c + col_span) not in covered:
                 col_span += 1
             row_span = 1
-            while r + row_span < len(matrix) and all(
-                not matrix[r + row_span][x] and (r + row_span, x) not in covered
-                for x in range(c, c + col_span)
-            ):
+            while r + row_span < len(matrix) and all(not matrix[r + row_span][x] and (r + row_span, x) not in covered for x in range(c, c + col_span)):
                 row_span += 1
             if row_span > 1 or col_span > 1:
                 span = CellSpan(r, c, row_span, col_span)
                 spans.append(span)
-                for rr in range(span.row, span.end_row + 1):
-                    for cc in range(span.column, span.end_column + 1):
-                        covered.add((rr, cc))
+                covered.update((rr, cc) for rr in range(span.row, span.end_row + 1) for cc in range(span.column, span.end_column + 1))
     return spans
 
 
 def infer_header_hierarchy(rows: Sequence[Sequence[str]]) -> dict[str, object]:
-    """Return parent/child header relationships without flattening source rows."""
     if len(rows) < 2:
         return {"header_rows": 1 if rows else 0, "columns": []}
     width = max((len(row) for row in rows), default=0)
@@ -73,12 +62,46 @@ def infer_header_hierarchy(rows: Sequence[Sequence[str]]) -> dict[str, object]:
     return {"header_rows": 2, "columns": columns}
 
 
-def cluster_columns(x_centers: Sequence[float], tolerance: float = 12.0) -> list[list[int]]:
-    """Cluster x-centers for borderless table detection using a deterministic rule."""
+def cluster_columns(x_centers: Sequence[float], tolerance: float = 12.0, min_samples: int = 1) -> list[list[int]]:
+    """Density-based 1D clustering tolerant of small OCR alignment errors.
+
+    A center joins a cluster when it is density-connected to a core neighborhood.
+    Outliers remain singleton columns rather than being silently discarded.
+    """
+    if not x_centers:
+        return []
+    order = sorted(range(len(x_centers)), key=lambda i: x_centers[i])
     clusters: list[list[int]] = []
-    for index, center in sorted(enumerate(x_centers), key=lambda item: item[1]):
-        if not clusters or abs(center - sum(x_centers[i] for i in clusters[-1]) / len(clusters[-1])) > tolerance:
-            clusters.append([index])
+    current: list[int] = []
+    for index in order:
+        if not current:
+            current = [index]
+            continue
+        neighborhood = [item for item in current if abs(x_centers[index] - x_centers[item]) <= tolerance]
+        if len(neighborhood) >= min_samples or abs(x_centers[index] - sum(x_centers[item] for item in current) / len(current)) <= tolerance:
+            current.append(index)
         else:
-            clusters[-1].append(index)
-    return clusters
+            clusters.append(current)
+            current = [index]
+    if current:
+        clusters.append(current)
+    return [sorted(cluster) for cluster in clusters]
+
+
+def column_width_vector(rows: Sequence[Sequence[str]]) -> list[float]:
+    width = max((len(row) for row in rows), default=0)
+    if not width:
+        return []
+    counts = [0.0] * width
+    total = max(1, len(rows))
+    for row in rows:
+        for index, value in enumerate(row[:width]):
+            counts[index] += len(str(value).strip())
+    magnitude = sqrt(sum(value * value for value in counts)) or 1.0
+    return [round(value / magnitude, 6) for value in counts]
+
+
+def vector_similarity(left: Sequence[float], right: Sequence[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    return sum(a * b for a, b in zip(left, right))

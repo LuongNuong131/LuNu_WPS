@@ -15,7 +15,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
-from app.document_ai.layout.inference import infer_header_hierarchy, infer_spans
+from app.document_ai.layout.inference import column_width_vector, infer_header_hierarchy, infer_spans, vector_similarity
 from app.processors.base import DocumentProcessor
 
 
@@ -148,11 +148,10 @@ def _extract_page_tables(page: pdfplumber.page.Page, page_number: int) -> list[E
 
 
 def _merge_continuation_tables(tables: list[ExtractedTable]) -> tuple[list[ExtractedTable], int]:
-    """Merge adjacent page tables when the continuation header is identical.
+    """Merge adjacent tables using structural and semantic evidence.
 
-    The conservative rule requires consecutive pages and an identical normalized
-    header. It avoids merging unrelated tables merely because they have the same
-    width, while preserving the repeated-header evidence in the diagnostics.
+    A continuation may omit its header. In that case column count, normalized
+    width vector and the data types of the first data row must still agree.
     """
     merged: list[ExtractedTable] = []
     merge_count = 0
@@ -162,13 +161,10 @@ def _merge_continuation_tables(tables: list[ExtractedTable]) -> tuple[list[Extra
         if merged:
             previous = merged[-1]
             previous_pages = previous.source_pages or [previous.page]
-            can_merge = (
-                current_pages[0] == previous_pages[-1] + 1
-                and _header_signature(previous.rows) == _header_signature(current.rows)
-                and len(previous.rows[0]) == len(current.rows[0])
-            )
+            can_merge = current_pages[0] == previous_pages[-1] + 1 and _continuation_match(previous, current)
             if can_merge:
-                previous.rows.extend(current.rows[1:])
+                has_repeated_header = _header_signature(previous.rows) == _header_signature(current.rows[:1])
+                previous.rows.extend(current.rows[1:] if has_repeated_header else current.rows)
                 previous.source_pages = previous_pages + current_pages
                 merge_count += 1
                 continue
@@ -181,6 +177,35 @@ def _header_signature(rows: list[list[str]]) -> tuple[str, ...]:
     if not rows:
         return ()
     return tuple(re.sub(r"\s+", " ", value).strip().casefold() for value in rows[0])
+
+
+def _cell_type(value: str) -> str:
+    value = _clean_cell(value)
+    if not value:
+        return "empty"
+    if re.search(r"[$€£₫%]|\b(?:VND|USD|EUR)\b", value, re.I):
+        return "number"
+    if re.fullmatch(r"[-+]?\d[\d.,]*", value.replace(" ", "")):
+        return "number"
+    return "text"
+
+
+def _continuation_match(previous: ExtractedTable, current: ExtractedTable) -> bool:
+    previous_width = len(previous.rows[0]) if previous.rows else 0
+    current_width = max((len(row) for row in current.rows), default=0)
+    if previous_width < 2 or current_width != previous_width:
+        return False
+    if _header_signature(previous.rows) == _header_signature(current.rows[:1]):
+        return True
+    previous_vector = column_width_vector(previous.rows[1:] or previous.rows)
+    current_data = current.rows[1:] if _header_signature(current.rows) == _header_signature(previous.rows) else current.rows
+    current_vector = column_width_vector(current_data)
+    similarity = vector_similarity(previous_vector, current_vector)
+    if similarity < 0.82:
+        return False
+    previous_types = [_cell_type(row[index]) for row in (previous.rows[1:2] or previous.rows) for index in range(previous_width)]
+    current_types = [_cell_type(row[index]) for row in (current_data[:1] or current.rows) for index in range(current_width)]
+    return sum(a == b or "empty" in {a, b} for a, b in zip(previous_types, current_types)) / previous_width >= 0.75
 
 
 def _normalize_rows(raw_rows: list[list[Any]]) -> list[list[str]]:
