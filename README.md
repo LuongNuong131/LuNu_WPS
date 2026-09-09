@@ -16,6 +16,8 @@ OfficeFlow là nền tảng xử lý PDF/Office miễn phí và open-source-firs
 | Borderless table inference | ✅ Implemented | Density clustering cho alignment thay vì yêu cầu bounding box hoàn hảo. |
 | Headerless multi-page continuation | ✅ Implemented | Dùng column-width similarity và data-type matching khi trang sau không lặp header. |
 | Financial truth checks | ✅ Implemented | Kiểm tra `Quantity × Unit Price ≈ Line Total` và `Subtotal + Tax ≈ Grand Total`. |
+| Enterprise invoice extraction | ✅ Implemented | Gom mô tả nhiều dòng, trích xuất Invoice Number/Date/MST/VAT/Subtotal/Grand Total và xuất workbook theo nghiệp vụ hóa đơn. |
+| Vietnamese financial localization | ✅ Implemented | Hiểu `1.000.000 VNĐ`, `1,000,000.00`, `1.234,56 €` và suy luận VAT khi thiếu rate. |
 | Human conflict review | ✅ Implemented | Conflict gắn với cell, ưu tiên cao và hiển thị nổi bật trong Confidence Review Panel. |
 | Durable queue | ✅ Configurable | Celery + Redis, late acknowledgement, bounded retry và prefetch thấp. |
 | Production stack | ✅ Implemented | Docker Compose gồm FastAPI, Vue/Nginx, PostgreSQL, Redis và Celery. |
@@ -36,7 +38,7 @@ Upload
   → truth model
   → arithmetic validation
   → review tasks / ready state
-  → workbook + Audit sheet
+  → Overview + Line Items + Audit workbook
 ```
 
 `CanonicalDocument` là hợp đồng trung tâm giữa ingestion, OCR, layout, semantics, validation và export. Mỗi object quan trọng có thể truy ngược về page, bbox, table/cell ID, quote, engine và confidence. Pipeline không quảng cáo accuracy tuyệt đối; nó công khai uncertainty để người dùng có thể kiểm tra.
@@ -59,7 +61,15 @@ Validation engine nhận diện các cột phổ biến như `Quantity`, `Unit P
 4. Đưa conflict vào review panel của frontend.
 5. Đánh dấu truth facts là `conflicting` mà không sửa raw source value.
 
-### 3. Production-ready nhưng vẫn dễ chạy local
+### 3. Enterprise invoice moat
+
+Invoice extraction xử lý mô tả sản phẩm bị wrap thành nhiều visual lines bằng Y-axis clustering và continuation-row inference. Một dòng logic được giữ trong một Excel row, dùng newline trong description và `wrap_text=True` thay vì vertical cell merge gây mất dữ liệu.
+
+Các key-value pairs ngoài bảng được trích xuất bằng regex deterministic kết hợp block-level spatial provenance. Những trường được hỗ trợ gồm `Invoice_Number`, `Date`, `Tax_Code`, `VAT_Rate`, `Subtotal` và `Grand_Total`. Mỗi entity giữ normalized value, confidence và evidence bbox.
+
+Financial parsing hiểu cả convention Việt Nam và quốc tế. Khi invoice có subtotal và grand total nhưng thiếu VAT rate, engine suy luận rate từ `Grand Total / Subtotal - 1` trong khoảng hợp lý, lưu kết quả vào diagnostics và kiểm tra lại quan hệ VAT. Workbook invoice có ba vùng nghiệp vụ chính: `Overview` cho metadata, `Line Items` cho bảng chính và `Audit` cho provenance/conflict.
+
+### 4. Production-ready nhưng vẫn dễ chạy local
 
 Docker Compose cung cấp một stack hoàn chỉnh. Backend và Celery dùng cùng image để tránh lệch dependency; frontend được build multi-stage và phục vụ qua Nginx; Postgres và Redis có volume riêng cùng healthcheck. Worker có retry backoff cho lỗi kết nối tạm thời và JSON logs để điều tra job hỏng ở bất kỳ trang nào.
 
