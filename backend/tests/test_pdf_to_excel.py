@@ -13,7 +13,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
 from app.document_ai.preprocess.noise_filter import is_noise_text
-from app.processors.pdf_to_excel import ExtractedTable, PDFToExcelProcessor, _merge_continuation_tables, _typed_excel_value
+from app.processors.pdf_to_excel import ExtractedTable, PDFToExcelProcessor, _merge_continuation_tables, _semantic_sheet_name, _typed_excel_value
+from app.document_ai.layout.inference import weighted_table_similarity
 
 
 def make_native_pdf(path: Path) -> None:
@@ -107,3 +108,15 @@ def test_noise_filter_rejects_seals_and_repetitive_gibberish() -> None:
     assert is_noise_text("@#$$%^^&&") is True
     assert is_noise_text("XyZzZz") is True
     assert is_noise_text("Invoice INV-2026-001") is False
+
+
+def test_fuzzy_routing_accepts_skewed_widths_when_headers_match() -> None:
+    score = weighted_table_similarity(["Description", "Qty", "Weight"], ["Descript.", "Qty", "Weight"], [0.55, 0.25, 0.20], [0.43, 0.32, 0.25])
+    assert score >= 0.78
+
+
+def test_semantic_sheet_name_uses_header_context() -> None:
+    from openpyxl import Workbook
+    workbook = Workbook(write_only=True)
+    table = ExtractedTable(4, 1, [["Description", "Qty", "Weight"], ["Box", "2", "10kg"]], "lines", [4])
+    assert _semantic_sheet_name(table, workbook).startswith("Packing_List")

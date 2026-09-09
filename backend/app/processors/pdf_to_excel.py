@@ -112,7 +112,7 @@ class PDFToExcelProcessor(DocumentProcessor):
             line_items.append(["No primary invoice table detected"])
         for group in dynamic_groups.values():
             table = group[0]
-            sheet_name = _safe_sheet_name(f"Table_Page{table.page}", workbook)
+            sheet_name = _semantic_sheet_name(table, workbook)
             sheet = workbook.create_sheet(sheet_name)
             _write_table(sheet, table.rows, table.page, table.strategy, table.source_pages, streaming=True)
             for continuation in group[1:]:
@@ -502,6 +502,23 @@ def _safe_sheet_name(name: str, workbook: Workbook) -> str:
         candidate = f"{base[:25]}-{counter}"
         counter += 1
     return candidate
+
+
+def _semantic_sheet_name(table: ExtractedTable, workbook: Workbook) -> str:
+    """Infer a stable enterprise-friendly name from the table's headers."""
+    header = " ".join(table.header)
+    rules = (
+        ("Packing_List", ("description", "item", "qty", "quantity", "weight", "mô tả", "số lượng", "trọng lượng")),
+        ("Fee_Schedule", ("fee", "cost", "tax", "charge", "phí", "chi phí", "thuế")),
+        ("Contacts", ("name", "email", "phone", "address", "tên", "điện thoại", "địa chỉ")),
+        ("Inventory", ("sku", "stock", "warehouse", "inventory", "tồn kho", "mã hàng", "kho")),
+        ("Payments", ("payment", "paid", "bank", "amount", "thanh toán", "ngân hàng", "số tiền")),
+    )
+    lowered = header.casefold()
+    for name, keywords in rules:
+        if sum(keyword.casefold() in lowered for keyword in keywords) >= 2:
+            return _safe_sheet_name(f"{name}_Page{table.page}", workbook)
+    return _safe_sheet_name(f"Table_Page{table.page}", workbook)
 
 
 def _style_workbook(workbook: Workbook) -> None:
