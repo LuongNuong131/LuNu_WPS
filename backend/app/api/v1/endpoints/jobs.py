@@ -6,13 +6,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, List
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
+from app.api.v1.endpoints.auth import UserResponse, current_user
 from app.models.job import JobResponse, JobStatus
 from app.persistence.job_store import JobStore
 from app.processors.factory import get_processor
+from app.queue import enqueue_job
 from app.tool_registry import get_tool
 
 router = APIRouter()
@@ -97,8 +99,8 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
-def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, options: dict) -> None:
-    job = job_store.get(job_id)
+def process_job_task(job_id: str, input_paths: List[str], tool_slug: str, options: dict, user_id: str = "local-dev") -> None:
+    job = job_store.get_for_user(job_id, user_id)
     if not job:
         _cleanup(input_paths)
         return
@@ -165,6 +167,7 @@ async def create_job(
     tool_slug: str = Form(...),
     options_json: str = Form("{}"),
     files: List[UploadFile] = File(...),
+    user: UserResponse = Depends(current_user),
 ):
     tool = get_tool(tool_slug)
     if not tool or not tool.enabled:
@@ -217,23 +220,24 @@ async def create_job(
         _cleanup(input_paths or [os.path.join(job_dir, "placeholder")])
         raise HTTPException(status_code=500, detail=f"Không thể lưu file: {_public_error(exc)}") from exc
 
-    job = JobResponse(id=job_id, tool_slug=tool_slug, status=JobStatus.QUEUED, progress=0, original_filename=", ".join(original_names), created_at=datetime.now(timezone.utc))
+    job = JobResponse(id=job_id, user_id=user.id, tool_slug=tool_slug, status=JobStatus.QUEUED, progress=0, original_filename=", ".join(original_names), created_at=datetime.now(timezone.utc))
     job_store.save(job)
-    background_tasks.add_task(process_job_task, job_id, input_paths, tool_slug, options)
+    if enqueue_job(job_id, input_paths, tool_slug, options, user.id) is None:
+        background_tasks.add_task(process_job_task, job_id, input_paths, tool_slug, options, user.id)
     return job
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job_status(job_id: str):
-    job = job_store.get(job_id)
+async def get_job_status(job_id: str, user: UserResponse = Depends(current_user)):
+    job = job_store.get_for_user(job_id, user.id)
     if not job:
         raise HTTPException(status_code=404, detail="Không tìm thấy Job")
     return job
 
 
 @router.get("/{job_id}/download")
-async def download_job(job_id: str):
-    job = job_store.get(job_id)
+async def download_job(job_id: str, user: UserResponse = Depends(current_user)):
+    job = job_store.get_for_user(job_id, user.id)
     if not job or job.status != JobStatus.SUCCESS:
         raise HTTPException(status_code=400, detail="File chưa sẵn sàng hoặc đã bị lỗi.")
     file_path = _output_path(job.output_filename)

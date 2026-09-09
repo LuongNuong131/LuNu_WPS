@@ -36,6 +36,7 @@ class JobStore:
                 """
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL DEFAULT 'local-dev',
                     tool_slug TEXT NOT NULL,
                     status TEXT NOT NULL,
                     progress INTEGER NOT NULL DEFAULT 0 CHECK(progress >= 0 AND progress <= 100),
@@ -48,7 +49,11 @@ class JobStore:
                 )
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "user_id" not in columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local-dev'")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user_created ON jobs(user_id, created_at)")
 
     @staticmethod
     def _iso(value: datetime | None) -> str | None:
@@ -65,6 +70,7 @@ class JobStore:
         metadata = json.loads(row["result_metadata"]) if row["result_metadata"] else None
         return JobResponse(
             id=row["id"],
+            user_id=row["user_id"] if "user_id" in row.keys() else "local-dev",
             tool_slug=row["tool_slug"],
             status=JobStatus(row["status"]),
             progress=row["progress"],
@@ -82,11 +88,12 @@ class JobStore:
             connection.execute(
                 """
                 INSERT INTO jobs (
-                    id, tool_slug, status, progress, original_filename,
+                    id, user_id, tool_slug, status, progress, original_filename,
                     output_filename, error_message, result_metadata,
                     completed_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
+                    user_id=excluded.user_id,
                     tool_slug=excluded.tool_slug,
                     status=excluded.status,
                     progress=excluded.progress,
@@ -99,6 +106,7 @@ class JobStore:
                 """,
                 (
                     payload["id"],
+                    payload["user_id"],
                     payload["tool_slug"],
                     payload["status"],
                     payload["progress"],
@@ -115,6 +123,11 @@ class JobStore:
     def get(self, job_id: str) -> JobResponse | None:
         with self._lock, self._connect() as connection:
             row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return self._to_job(row) if row else None
+
+    def get_for_user(self, job_id: str, user_id: str) -> JobResponse | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute("SELECT * FROM jobs WHERE id = ? AND user_id = ?", (job_id, user_id)).fetchone()
         return self._to_job(row) if row else None
 
     def count(self) -> int:

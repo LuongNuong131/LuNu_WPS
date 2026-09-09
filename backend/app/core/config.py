@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = os.path.join(STORAGE_DIR, "uploads")
     OUTPUT_DIR: str = os.path.join(STORAGE_DIR, "outputs")
     JOB_DB_PATH: str = os.path.join(STORAGE_DIR, "jobs.sqlite3")
+    DATABASE_URL: str = ""
+    REDIS_URL: str = ""
+    JWT_SECRET_KEY: str = "change-me-in-production-use-a-32-byte-secret"
+    JWT_EXPIRE_MINUTES: int = 60 * 24
+    AUTH_REQUIRED: bool = False
     
     # CORS
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]

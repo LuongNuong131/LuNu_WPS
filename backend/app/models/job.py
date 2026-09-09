@@ -17,6 +17,7 @@ class JobCreate(JobBase):
 
 class JobResponse(JobBase):
     id: str
+    user_id: str = "local-dev"
     status: JobStatus
     progress: int = 0
     original_filename: str
