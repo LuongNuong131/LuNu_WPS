@@ -21,6 +21,24 @@ class CellSpan:
         return self.column + self.col_span - 1
 
 
+@dataclass(frozen=True)
+class TextFragment:
+    text: str
+    x0: float
+    top: float
+    x1: float
+    bottom: float
+    column: int = 0
+
+    @property
+    def center_y(self) -> float:
+        return (self.top + self.bottom) / 2
+
+    @property
+    def height(self) -> float:
+        return max(1.0, self.bottom - self.top)
+
+
 def infer_spans(rows: Sequence[Sequence[str]]) -> list[CellSpan]:
     if not rows:
         return []
@@ -63,11 +81,6 @@ def infer_header_hierarchy(rows: Sequence[Sequence[str]]) -> dict[str, object]:
 
 
 def cluster_columns(x_centers: Sequence[float], tolerance: float = 12.0, min_samples: int = 1) -> list[list[int]]:
-    """Density-based 1D clustering tolerant of small OCR alignment errors.
-
-    A center joins a cluster when it is density-connected to a core neighborhood.
-    Outliers remain singleton columns rather than being silently discarded.
-    """
     if not x_centers:
         return []
     order = sorted(range(len(x_centers)), key=lambda i: x_centers[i])
@@ -93,7 +106,6 @@ def column_width_vector(rows: Sequence[Sequence[str]]) -> list[float]:
     if not width:
         return []
     counts = [0.0] * width
-    total = max(1, len(rows))
     for row in rows:
         for index, value in enumerate(row[:width]):
             counts[index] += len(str(value).strip())
@@ -105,3 +117,57 @@ def vector_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
     return sum(a * b for a, b in zip(left, right))
+
+
+def cluster_fragments_by_y(fragments: Sequence[TextFragment], line_tolerance: float | None = None) -> list[list[TextFragment]]:
+    """Cluster OCR/PDF fragments into visual lines using overlap and adaptive gaps."""
+    if not fragments:
+        return []
+    ordered = sorted(fragments, key=lambda item: (item.top, item.x0))
+    median_height = sorted(item.height for item in ordered)[len(ordered) // 2]
+    tolerance = line_tolerance if line_tolerance is not None else max(2.0, median_height * 0.45)
+    lines: list[list[TextFragment]] = []
+    for fragment in ordered:
+        candidates = [line for line in lines if _vertical_overlap(line, fragment) >= 0.35 or abs(_line_center(line) - fragment.center_y) <= tolerance]
+        if not candidates:
+            lines.append([fragment])
+        else:
+            target = min(candidates, key=lambda line: abs(_line_center(line) - fragment.center_y))
+            target.append(fragment)
+    return [sorted(line, key=lambda item: item.x0) for line in lines]
+
+
+def _line_center(line: Sequence[TextFragment]) -> float:
+    return sum(item.center_y for item in line) / max(1, len(line))
+
+
+def _vertical_overlap(line: Sequence[TextFragment], fragment: TextFragment) -> float:
+    top = max(min(item.top for item in line), fragment.top)
+    bottom = min(max(item.bottom for item in line), fragment.bottom)
+    overlap = max(0.0, bottom - top)
+    return overlap / max(1.0, min(max(item.bottom for item in line) - min(item.top for item in line), fragment.height))
+
+
+def collapse_multiline_rows(rows: Sequence[Sequence[str]], description_column: int = 0, numeric_columns: Sequence[int] | None = None) -> list[list[str]]:
+    """Join visual continuation rows when only the description column has text.
+
+    This is intentionally conservative: a non-empty numeric column starts a new
+    logical item, while description-only rows are appended with a line break.
+    """
+    if not rows:
+        return []
+    width = max(len(row) for row in rows)
+    normalized = [list(row) + [""] * (width - len(row)) for row in rows]
+    numeric = set(numeric_columns or range(1, width))
+    result: list[list[str]] = []
+    for row in normalized:
+        continuation = bool(row[description_column].strip()) and not any(row[index].strip() for index in numeric if index < width)
+        if continuation and len(result) > 1 and not _looks_like_header(row, result[0]):
+            result[-1][description_column] = f"{result[-1][description_column]}\n{row[description_column]}".strip()
+        else:
+            result.append(row)
+    return result
+
+
+def _looks_like_header(row: Sequence[str], header: Sequence[str]) -> bool:
+    return [item.strip().casefold() for item in row] == [item.strip().casefold() for item in header]

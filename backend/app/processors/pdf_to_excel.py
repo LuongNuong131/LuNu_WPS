@@ -15,7 +15,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
-from app.document_ai.layout.inference import column_width_vector, infer_header_hierarchy, infer_spans, vector_similarity
+from app.document_ai.layout.inference import collapse_multiline_rows, column_width_vector, infer_header_hierarchy, infer_spans, vector_similarity
 from app.processors.base import DocumentProcessor
 
 
@@ -226,7 +226,7 @@ def _normalize_rows(raw_rows: list[list[Any]]) -> list[list[str]]:
         if _is_repeated_header(row, header) or not any(row):
             continue
         normalized.append(row[: len(header)] + [""] * max(0, len(header) - len(row)))
-    return normalized
+    return collapse_multiline_rows(normalized, description_column=0, numeric_columns=range(1, len(header)))
 
 
 def _find_header_index(rows: list[list[str]]) -> int:
@@ -282,6 +282,11 @@ def _write_table(sheet, rows: list[list[str]], page: int, strategy: str, source_
     sheet.append([])
     for row in rows:
         sheet.append([_typed_excel_value(value) for value in row])
+    for row in sheet.iter_rows(min_row=3, max_row=sheet.max_row):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    if rows and rows[0]:
+        sheet.column_dimensions["A"].width = min(60, max(24, max(len(line) for line in rows[0][0].splitlines())))
     for span in infer_spans(rows):
         start_row = span.row + 4
         start_col = span.column + 1
