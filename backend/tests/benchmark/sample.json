@@ -1,0 +1,18 @@
+{
+  "pass_threshold": 0.9,
+  "cases": [
+    {
+      "name": "merged-and-hierarchical-header",
+      "expected": {
+        "rows": [["Revenue", "", "Cost"], ["Q1", "Q2", "Total"], ["100", "120", "220"]],
+        "merged_cells": [{"row": 1, "column": 1, "row_span": 1, "col_span": 2}],
+        "header_hierarchy": [{"parent": "Revenue", "child": "Q1"}, {"parent": "Revenue", "child": "Q2"}, {"parent": "Cost", "child": "Total"}]
+      },
+      "actual": {
+        "rows": [["Revenue", "", "Cost"], ["Q1", "Q2", "Total"], ["100", "120", "220"]],
+        "merged_cells": [{"row": 1, "column": 1, "row_span": 1, "col_span": 2}],
+        "header_hierarchy": [{"parent": "Revenue", "child": "Q1"}, {"parent": "Revenue", "child": "Q2"}, {"parent": "Cost", "child": "Total"}]
+      }
+    }
+  ]
+}
