@@ -27,6 +27,15 @@ class ExtractedTable:
     strategy: str
     source_pages: list[int] | None = None
 
+    @property
+    def header(self) -> tuple[str, ...]:
+        return _header_signature(self.rows)
+
+    @property
+    def structure_key(self) -> str:
+        """Stable human-readable key used to route structurally similar tables."""
+        return f"{len(self.rows[0]) if self.rows else 0}:{'|'.join(self.header)}"
+
 
 class PDFToExcelProcessor(DocumentProcessor):
     """Convert table-based and text-based PDFs into a structured workbook.
@@ -176,6 +185,29 @@ def _merge_continuation_tables(tables: list[ExtractedTable]) -> tuple[list[Extra
     return merged, merge_count
 
 
+def _table_similarity(left: ExtractedTable, right: ExtractedTable) -> float:
+    """Compare column count, normalized headers and content-width ratios (0..1)."""
+    left_width = len(left.rows[0]) if left.rows else 0
+    right_width = len(right.rows[0]) if right.rows else 0
+    if not left_width or left_width != right_width:
+        return 0.0
+    header_score = sum(a == b for a, b in zip(left.header, right.header)) / left_width
+    width_score = vector_similarity(column_width_vector(left.rows[1:] or left.rows), column_width_vector(right.rows[1:] or right.rows))
+    return round(0.45 * 1.0 + 0.35 * header_score + 0.20 * width_score, 4)
+
+
+def _route_tables(tables: list[ExtractedTable]) -> tuple[list[ExtractedTable], dict[str, list[ExtractedTable]]]:
+    """Route the first invoice-like structure to Line Items and others by structure."""
+    if not tables:
+        return [], {}
+    primary = tables[0]
+    dynamic: dict[str, list[ExtractedTable]] = {}
+    for table in tables[1:]:
+        key = next((existing_key for existing_key, members in dynamic.items() if _table_similarity(members[0], table) >= 0.78), table.structure_key)
+        dynamic.setdefault(key, []).append(table)
+    return [primary], dynamic
+
+
 def _header_signature(rows: list[list[str]]) -> tuple[str, ...]:
     if not rows:
         return ()
@@ -200,6 +232,8 @@ def _continuation_match(previous: ExtractedTable, current: ExtractedTable) -> bo
         return False
     if _header_signature(previous.rows) == _header_signature(current.rows[:1]):
         return True
+    if previous.header and current.header and _table_similarity(previous, current) < 0.78:
+        return False
     previous_vector = column_width_vector(previous.rows[1:] or previous.rows)
     current_data = current.rows[1:] if _header_signature(current.rows) == _header_signature(previous.rows) else current.rows
     current_vector = column_width_vector(current_data)
