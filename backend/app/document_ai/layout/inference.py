@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from math import sqrt
+import re
 from typing import Sequence
 
 
@@ -117,6 +119,41 @@ def vector_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
     return sum(a * b for a, b in zip(left, right))
+
+
+def normalized_header_score(left: Sequence[str], right: Sequence[str]) -> float:
+    """Return average fuzzy header match, tolerant of OCR spacing and typos."""
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    scores = []
+    for a, b in zip(left, right):
+        clean_a = re.sub(r"[^a-z0-9]+", "", str(a).casefold())
+        clean_b = re.sub(r"[^a-z0-9]+", "", str(b).casefold())
+        scores.append(SequenceMatcher(None, clean_a, clean_b).ratio() if clean_a and clean_b else 1.0 if not clean_a and not clean_b else 0.0)
+    return sum(scores) / len(scores)
+
+
+def weighted_table_similarity(
+    left_header: Sequence[str],
+    right_header: Sequence[str],
+    left_widths: Sequence[float],
+    right_widths: Sequence[float],
+    width_tolerance: float = 0.20,
+) -> float:
+    """Score table compatibility, relaxing width variance for matching headers.
+
+    A header score above 85% permits up to 20% per-column width drift, which is
+    common when scanned pages are slightly skewed or cropped.
+    """
+    if not left_header or len(left_header) != len(right_header):
+        return 0.0
+    header_score = normalized_header_score(left_header, right_header)
+    if len(left_widths) != len(right_widths) or not left_widths:
+        return header_score * 0.75
+    variance = sum(abs(a - b) for a, b in zip(left_widths, right_widths)) / len(left_widths)
+    tolerance = width_tolerance if header_score > 0.85 else width_tolerance / 2
+    width_score = max(0.0, 1.0 - (variance / max(tolerance, 1e-9)))
+    return round(0.7 * header_score + 0.3 * width_score, 4)
 
 
 def cluster_fragments_by_y(fragments: Sequence[TextFragment], line_tolerance: float | None = None) -> list[list[TextFragment]]:

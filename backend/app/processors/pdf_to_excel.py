@@ -15,7 +15,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
-from app.document_ai.layout.inference import collapse_multiline_rows, column_width_vector, infer_header_hierarchy, infer_spans, vector_similarity
+from app.document_ai.layout.inference import collapse_multiline_rows, column_width_vector, infer_header_hierarchy, infer_spans, vector_similarity, weighted_table_similarity
 from app.processors.base import DocumentProcessor
 
 
@@ -207,14 +207,17 @@ def _merge_continuation_tables(tables: list[ExtractedTable]) -> tuple[list[Extra
 
 
 def _table_similarity(left: ExtractedTable, right: ExtractedTable) -> float:
-    """Compare column count, normalized headers and content-width ratios (0..1)."""
+    """Compare column count, fuzzy headers and tolerant width variance (0..1)."""
     left_width = len(left.rows[0]) if left.rows else 0
     right_width = len(right.rows[0]) if right.rows else 0
     if not left_width or left_width != right_width:
         return 0.0
-    header_score = sum(a == b for a, b in zip(left.header, right.header)) / left_width
-    width_score = vector_similarity(column_width_vector(left.rows[1:] or left.rows), column_width_vector(right.rows[1:] or right.rows))
-    return round(0.45 * 1.0 + 0.35 * header_score + 0.20 * width_score, 4)
+    return weighted_table_similarity(
+        left.header,
+        right.header,
+        column_width_vector(left.rows[1:] or left.rows),
+        column_width_vector(right.rows[1:] or right.rows),
+    )
 
 
 def _route_tables(tables: list[ExtractedTable]) -> tuple[list[ExtractedTable], dict[str, list[ExtractedTable]]]:
@@ -256,8 +259,13 @@ def _continuation_match(previous: ExtractedTable, current: ExtractedTable) -> bo
     previous_vector = column_width_vector(previous.rows[1:] or previous.rows)
     current_data = current.rows[1:] if _header_signature(current.rows) == _header_signature(previous.rows) else current.rows
     current_vector = column_width_vector(current_data)
-    similarity = vector_similarity(previous_vector, current_vector)
-    if similarity < 0.82:
+    similarity = weighted_table_similarity(
+        previous.header,
+        _header_signature(current.rows[:1]) or previous.header,
+        previous_vector,
+        current_vector,
+    )
+    if similarity < 0.78 and vector_similarity(previous_vector, current_vector) < 0.82:
         return False
     previous_types = [_cell_type(row[index]) for row in (previous.rows[1:2] or previous.rows) for index in range(previous_width)]
     current_types = [_cell_type(row[index]) for row in (current_data[:1] or current.rows) for index in range(current_width)]
