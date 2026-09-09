@@ -23,6 +23,7 @@ from app.document_ai.models import (
 )
 from app.document_ai.ocr.tesseract_engine import TesseractEngine
 from app.document_ai.preprocess.image import prepare_for_ocr
+from app.document_ai.preprocess.noise_filter import filter_blocks, filter_text_lines
 from app.document_ai.profile import DocumentProfiler
 from app.document_ai.routing import ProcessingRouter
 from app.document_ai.semantics import extract_entities
@@ -61,8 +62,8 @@ class PDFIntelligencePipeline:
             for page_number, page in enumerate(pdf.pages, start=1):
                 canonical_page = DocumentPage(page_number, float(page.width), float(page.height), rotation=int(getattr(page, "rotation", 0) or 0))
                 native_text = page.extract_text(x_tolerance=2, y_tolerance=3) or ""
-                canonical_page.raw_text = native_text
-                canonical_page.blocks = _native_blocks(page, native_text, page_number)
+                canonical_page.raw_text = "\n".join(filter_text_lines(native_text.splitlines()))
+                canonical_page.blocks = filter_blocks(_native_blocks(page, canonical_page.raw_text, page_number))
                 canonical_page.tables = _native_tables(page, page_number)
                 stats = page_stats.get(page_number, {})
                 should_ocr = bool(ocr_enabled and stats.get("ocr_recommended", not canonical_page.blocks))
@@ -75,7 +76,8 @@ class PDFIntelligencePipeline:
                             canonical_page.raw_text = f"{native_text.strip()}\n{ocr_result.text.strip()}".strip()
                         else:
                             canonical_page.raw_text = ocr_result.text
-                        canonical_page.blocks = _ocr_blocks(ocr_result)
+                        canonical_page.blocks = filter_blocks(_ocr_blocks(ocr_result))
+                    canonical_page.raw_text = "\n".join(filter_text_lines(canonical_page.raw_text.splitlines()))
                     if ocr_result.warnings:
                         document.warnings.extend(f"page_{page_number}:{warning}" for warning in ocr_result.warnings)
                     page_quality = dict(stats)

@@ -12,6 +12,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
+from app.document_ai.preprocess.noise_filter import is_noise_text
 from app.processors.pdf_to_excel import ExtractedTable, PDFToExcelProcessor, _merge_continuation_tables, _typed_excel_value
 
 
@@ -100,3 +101,9 @@ def test_non_adjacent_or_different_headers_are_not_merged() -> None:
     merged, count = _merge_continuation_tables(tables)
     assert count == 0
     assert len(merged) == 2
+
+
+def test_noise_filter_rejects_seals_and_repetitive_gibberish() -> None:
+    assert is_noise_text("@#$$%^^&&") is True
+    assert is_noise_text("XyZzZz") is True
+    assert is_noise_text("Invoice INV-2026-001") is False
