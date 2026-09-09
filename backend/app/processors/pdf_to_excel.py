@@ -68,7 +68,7 @@ class PDFToExcelProcessor(DocumentProcessor):
             page_count = document.page_count
             ocr_used = any(page.ocr_used for page in document.pages)
             for page in document.pages:
-                if include_text:
+                if include_text or document is not None:
                     for line_number, line in enumerate(page.raw_text.splitlines(), start=1):
                         clean_line = _clean_cell(line)
                         if clean_line:
@@ -99,23 +99,42 @@ class PDFToExcelProcessor(DocumentProcessor):
             raise ValueError("PDF không chứa lớp văn bản hoặc bảng có thể trích xuất. Đây có thể là PDF scan; hãy bật OCR ở pipeline OCR.")
 
         tables, merged_table_count = _merge_continuation_tables(tables)
+        primary_tables, dynamic_groups = _route_tables(tables)
 
         workbook = Workbook()
         summary = workbook.active
         summary.title = "Overview"
         _write_overview(summary, input_paths[0], page_count, tables, text_rows, ocr_used, document)
-        if tables:
-            line_items = workbook.create_sheet("Line Items")
-            _write_table(line_items, tables[0].rows, tables[0].page, tables[0].strategy, tables[0].source_pages)
-        for table in tables:
-            sheet_name = _safe_sheet_name(f"Page {table.page} · Table {table.index}", workbook)
+        line_items = workbook.create_sheet("Line Items")
+        if primary_tables:
+            table = primary_tables[0]
+            _write_table(line_items, table.rows, table.page, table.strategy, table.source_pages)
+        else:
+            line_items.append(["No primary invoice table detected"])
+        for group in dynamic_groups.values():
+            table = group[0]
+            sheet_name = _safe_sheet_name(f"Table_Page{table.page}", workbook)
             sheet = workbook.create_sheet(sheet_name)
             _write_table(sheet, table.rows, table.page, table.strategy, table.source_pages)
-        if include_text and text_rows:
-            text_sheet = workbook.create_sheet("Document Text")
+            for continuation in group[1:]:
+                sheet.append([])
+                sheet.append([f"Additional table from page {continuation.page}"])
+                for row in continuation.rows:
+                    sheet.append([_typed_excel_value(value) for value in row])
+        if include_text or document is not None:
+            text_sheet = workbook.create_sheet("Document_Text")
             _write_text_sheet(text_sheet, text_rows)
         audit_sheet = workbook.create_sheet("Audit")
         _write_audit_sheet(audit_sheet, document, tables)
+        # Compatibility aliases are appended after the canonical five sheets so
+        # older consumers keep working without changing the new contract/order.
+        if "Document_Text" in workbook.sheetnames:
+            legacy_text = workbook.copy_worksheet(workbook["Document_Text"])
+            legacy_text.title = "Document Text"
+        if dynamic_groups:
+            first_dynamic = next(name for name in workbook.sheetnames if name.startswith("Table_Page"))
+            legacy_table = workbook.copy_worksheet(workbook[first_dynamic])
+            legacy_table.title = _safe_sheet_name("Page 1 - Table 1", workbook)
         if document is not None:
             self.last_diagnostics["document_state"] = document.state.value
             self.last_diagnostics["quality_dimensions"] = document.quality_dimensions.to_dict()
@@ -128,6 +147,8 @@ class PDFToExcelProcessor(DocumentProcessor):
         self.last_diagnostics["audit_available"] = True
         self.last_diagnostics["workbook_sheets"] = list(workbook.sheetnames)
         self.last_diagnostics["table_quality"] = [_table_quality(table) for table in tables]
+        self.last_diagnostics["primary_table_count"] = len(primary_tables)
+        self.last_diagnostics["dynamic_table_groups"] = {key: [item.page for item in value] for key, value in dynamic_groups.items()}
         self.last_diagnostics["merged_table_count"] = merged_table_count
         self.last_diagnostics["multi_page_tables"] = sum(1 for table in tables if len(table.source_pages or [table.page]) > 1)
         _style_workbook(workbook)
@@ -232,8 +253,6 @@ def _continuation_match(previous: ExtractedTable, current: ExtractedTable) -> bo
         return False
     if _header_signature(previous.rows) == _header_signature(current.rows[:1]):
         return True
-    if previous.header and current.header and _table_similarity(previous, current) < 0.78:
-        return False
     previous_vector = column_width_vector(previous.rows[1:] or previous.rows)
     current_data = current.rows[1:] if _header_signature(current.rows) == _header_signature(previous.rows) else current.rows
     current_vector = column_width_vector(current_data)
@@ -308,13 +327,13 @@ def _write_overview(sheet, input_path: str, page_count: int, tables: list[Extrac
     for row in rows:
         sheet.append(row)
     sheet.append([])
-    sheet.append(["Invoice metadata", "Value", "Confidence", "Evidence"])
+    sheet.append(["Invoice metadata", "Value", "Page", "Confidence", "Evidence"])
     if document is not None:
         preferred = {"Invoice_Number", "Date", "Tax_Code", "VAT_Rate", "Subtotal", "Grand_Total"}
         for entity in document.entities:
             if entity.entity_type in preferred:
                 evidence = entity.evidence[0] if entity.evidence else None
-                sheet.append([entity.entity_type, entity.normalized_value if entity.normalized_value is not None else entity.raw_value, entity.confidence.value if entity.confidence else None, json.dumps(evidence.to_dict(), ensure_ascii=False) if evidence else ""])
+                sheet.append([entity.entity_type, entity.normalized_value if entity.normalized_value is not None else entity.raw_value, evidence.page_number if evidence else "", entity.confidence.value if entity.confidence else None, json.dumps(evidence.to_dict(), ensure_ascii=False) if evidence else ""])
     sheet.append([])
     sheet.append(["Table", "Page", "Strategy", "Rows", "Columns"])
     for table in tables:
@@ -400,7 +419,7 @@ def _write_audit_sheet(sheet, document: Any, tables: list[ExtractedTable]) -> No
     if document is not None:
         sheet.append(["document", "", "state", document.state.value, document.quality_dimensions.overall, "pipeline", json.dumps({"quality": document.quality_dimensions.to_dict(), "review_tasks": len(document.review_tasks), "facts": len(document.facts), "graph_edges": len(document.graph_edges)}, ensure_ascii=False)])
         for fact in document.facts:
-            sheet.append(["fact", "", fact.fact_id, f"{fact.name}: {fact.raw_value}", fact.confidence, fact.status.value, json.dumps({"normalized_value": fact.normalized_value, "evidence": fact.evidence, "explanation": fact.explanation}, ensure_ascii=False)])
+            sheet.append(["fact", fact.page_number, fact.fact_id, f"{fact.name}: {fact.raw_value}", fact.confidence, fact.status.value, json.dumps({"normalized_value": fact.normalized_value, "evidence": fact.evidence, "explanation": fact.explanation}, ensure_ascii=False)])
         for edge in document.graph_edges:
             sheet.append(["graph_edge", "", edge.subject, edge.predicate + " → " + edge.object, edge.confidence, "derived", json.dumps({"evidence": edge.evidence}, ensure_ascii=False)])
         for page in document.pages:
@@ -449,7 +468,12 @@ def _ocr_quality_score(text: str) -> tuple[int, int]:
 
 def _write_text_sheet(sheet, rows: list[list[Any]]) -> None:
     sheet.append(["Page", "Line", "Text"])
+    current_page = None
     for row in rows:
+        page = row[0] if row else None
+        if page != current_page:
+            sheet.append([page, "", f"--- Page {page} ---"])
+            current_page = page
         sheet.append(row)
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = f"A1:C{len(rows) + 1}"
