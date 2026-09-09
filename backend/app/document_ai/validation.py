@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from app.document_ai.contracts import ReviewTask, TruthStatus, ValidationResult
 from app.document_ai.models import CanonicalDocument, DocumentCell, DocumentTable
+from app.document_ai.semantics import parse_financial_number
 
 LOW_CONFIDENCE = 0.70
 _TOLERANCE = Decimal("0.01")
@@ -22,7 +23,7 @@ def validate_document(document: CanonicalDocument) -> tuple[list[ValidationResul
     for entity_index, entity in enumerate(document.entities, start=1):
         confidence = entity.confidence.value if entity.confidence else 0.0
         if confidence < LOW_CONFIDENCE or not entity.evidence:
-            priority = "high" if entity.entity_type in {"MONEY", "INVOICE_NUMBER"} else "normal"
+            priority = "high" if entity.entity_type in {"MONEY", "INVOICE_NUMBER", "Grand_Total", "Subtotal"} else "normal"
             review_tasks.append(ReviewTask(task_id=f"review-entity-{entity_index}", field=entity.entity_type, value=entity.raw_value, priority=priority, confidence=confidence, reason="low_confidence" if confidence < LOW_CONFIDENCE else "missing_evidence", evidence=[item.to_dict() for item in entity.evidence]))
     if any(item.reason == "arithmetic_conflict" for item in review_tasks):
         for fact in document.facts:
@@ -50,23 +51,8 @@ def _validate_tables(document: CanonicalDocument) -> list[ValidationResult]:
 
 
 def _money(value: str) -> Decimal | None:
-    compact = re.sub(r"[^0-9,.-]", "", value.replace(" ", ""))
-    if not compact or not re.fullmatch(r"[-+]?\d[\d.,]*", compact):
-        return None
-    if "," in compact and "." in compact:
-        decimal_separator = "." if compact.rfind(".") > compact.rfind(",") else ","
-        thousands = "," if decimal_separator == "." else "."
-        compact = compact.replace(thousands, "").replace(decimal_separator, ".")
-    elif compact.count(".") > 1:
-        compact = compact.replace(".", "")
-    elif compact.count(",") > 1:
-        compact = compact.replace(",", "")
-    else:
-        compact = compact.replace(",", ".")
-    try:
-        return Decimal(compact)
-    except InvalidOperation:
-        return None
+    parsed = parse_financial_number(value)
+    return Decimal(str(parsed)) if parsed is not None else None
 
 
 def _header_index(headers: list[str], names: set[str]) -> int | None:
@@ -74,6 +60,18 @@ def _header_index(headers: list[str], names: set[str]) -> int | None:
         normalized = re.sub(r"[^a-z0-9]", "", header.casefold())
         if any(alias in normalized for alias in names):
             return index
+    return None
+
+
+def _entity_number(document: CanonicalDocument, entity_type: str) -> Decimal | None:
+    values = [entity.normalized_value for entity in document.entities if entity.entity_type == entity_type]
+    for value in reversed(values):
+        if isinstance(value, (int, float)):
+            return Decimal(str(value))
+        if isinstance(value, str):
+            parsed = _money(value)
+            if parsed is not None:
+                return parsed
     return None
 
 
@@ -106,19 +104,22 @@ def _validate_financial_consistency(document: CanonicalDocument) -> tuple[list[V
                     tasks.append(_conflict_task(table, row_number, row[total], f"r{row_number}c{total + 1}", f"{quantity} × {unit_price} ≠ {line_total}"))
             if checks:
                 results.append(ValidationResult("line_item_arithmetic", "invalid" if failures else "valid", f"Checked {checks} line item relationship(s); {failures} conflict(s)."))
-        subtotal = _header_index(headers, {"subtotal", "tamtinh"})
-        tax = _header_index(headers, {"tax", "vat", "thue"})
-        grand = _header_index(headers, {"grandtotal", "totaldue", "tongcong", "tongtien"})
-        if subtotal is not None and tax is not None and grand is not None and len(table.rows) >= 2:
-            row = table.rows[-1]
-            if max(subtotal, tax, grand) < len(row):
-                values = [_money(row[index].text) for index in (subtotal, tax, grand)]
-                if all(value is not None for value in values):
-                    expected = values[0] + values[1]
-                    conflict = abs(expected - values[2]) > max(_TOLERANCE, abs(values[2]) * Decimal("0.01"))
-                    results.append(ValidationResult("subtotal_tax_total", "invalid" if conflict else "valid", f"Subtotal + tax {'does not equal' if conflict else 'equals'} grand total."))
-                    if conflict:
-                        tasks.append(_conflict_task(table, len(table.rows), row[grand], f"r{len(table.rows)}c{grand + 1}", f"{values[0]} + {values[1]} ≠ {values[2]}"))
+    vat_rate = _entity_number(document, "VAT_Rate")
+    subtotal = _entity_number(document, "Subtotal")
+    grand_total = _entity_number(document, "Grand_Total")
+    if subtotal is not None and grand_total is not None:
+        if vat_rate is None and subtotal:
+            inferred = (grand_total / subtotal) - Decimal("1")
+            if Decimal("0") <= inferred <= Decimal("0.30"):
+                document.diagnostics_data["inferred_vat_rate"] = float(inferred)
+                results.append(ValidationResult("vat_rate_inference", "valid", f"Inferred VAT rate {inferred:.4%} from subtotal and grand total."))
+                vat_rate = inferred
+        if vat_rate is not None:
+            expected = subtotal + subtotal * vat_rate
+            conflict = abs(expected - grand_total) > max(_TOLERANCE, abs(grand_total) * Decimal("0.01"))
+            results.append(ValidationResult("vat_arithmetic", "invalid" if conflict else "valid", f"Subtotal + VAT {'does not equal' if conflict else 'equals'} grand total."))
+            if conflict:
+                tasks.append(ReviewTask(task_id="review-vat-arithmetic", field="Grand_Total", value=str(grand_total), priority="high", confidence=0.0, reason="arithmetic_conflict", evidence=[{"quote": f"{subtotal} + ({subtotal} × {vat_rate}) ≠ {grand_total}"}]))
     if not results:
         results.append(ValidationResult("invoice_arithmetic", "uncertain", "No sufficiently labeled financial table relationship was found."))
     return results, tasks
