@@ -101,21 +101,20 @@ class PDFToExcelProcessor(DocumentProcessor):
         tables, merged_table_count = _merge_continuation_tables(tables)
         primary_tables, dynamic_groups = _route_tables(tables)
 
-        workbook = Workbook()
-        summary = workbook.active
-        summary.title = "Overview"
+        workbook = Workbook(write_only=True)
+        summary = workbook.create_sheet("Overview")
         _write_overview(summary, input_paths[0], page_count, tables, text_rows, ocr_used, document)
         line_items = workbook.create_sheet("Line Items")
         if primary_tables:
             table = primary_tables[0]
-            _write_table(line_items, table.rows, table.page, table.strategy, table.source_pages)
+            _write_table(line_items, table.rows, table.page, table.strategy, table.source_pages, streaming=True)
         else:
             line_items.append(["No primary invoice table detected"])
         for group in dynamic_groups.values():
             table = group[0]
             sheet_name = _safe_sheet_name(f"Table_Page{table.page}", workbook)
             sheet = workbook.create_sheet(sheet_name)
-            _write_table(sheet, table.rows, table.page, table.strategy, table.source_pages)
+            _write_table(sheet, table.rows, table.page, table.strategy, table.source_pages, streaming=True)
             for continuation in group[1:]:
                 sheet.append([])
                 sheet.append([f"Additional table from page {continuation.page}"])
@@ -129,12 +128,12 @@ class PDFToExcelProcessor(DocumentProcessor):
         # Compatibility aliases are appended after the canonical five sheets so
         # older consumers keep working without changing the new contract/order.
         if "Document_Text" in workbook.sheetnames:
-            legacy_text = workbook.copy_worksheet(workbook["Document_Text"])
-            legacy_text.title = "Document Text"
+            legacy_text = workbook.create_sheet("Document Text")
+            _write_text_sheet(legacy_text, text_rows)
         if dynamic_groups:
-            first_dynamic = next(name for name in workbook.sheetnames if name.startswith("Table_Page"))
-            legacy_table = workbook.copy_worksheet(workbook[first_dynamic])
-            legacy_table.title = _safe_sheet_name("Page 1 - Table 1", workbook)
+            legacy_table = workbook.create_sheet(_safe_sheet_name("Page 1 - Table 1", workbook))
+            first_dynamic = next(iter(dynamic_groups.values()))[0]
+            _write_table(legacy_table, first_dynamic.rows, first_dynamic.page, first_dynamic.strategy, first_dynamic.source_pages, streaming=True)
         if document is not None:
             self.last_diagnostics["document_state"] = document.state.value
             self.last_diagnostics["quality_dimensions"] = document.quality_dimensions.to_dict()
@@ -346,26 +345,31 @@ def _write_overview(sheet, input_path: str, page_count: int, tables: list[Extrac
     sheet.append(["Table", "Page", "Strategy", "Rows", "Columns"])
     for table in tables:
         sheet.append([f"Table {table.index}", ", ".join(map(str, table.source_pages or [table.page])), table.strategy, len(table.rows) - 1, len(table.rows[0])])
-    for row in sheet.iter_rows():
-        for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-    sheet.column_dimensions["A"].width = 24
-    sheet.column_dimensions["B"].width = 42
-    sheet.column_dimensions["C"].width = 16
-    sheet.column_dimensions["D"].width = 64
+    if not getattr(sheet.parent, "write_only", False):
+        for row in sheet.iter_rows():
+            for cell in row:
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+        sheet.column_dimensions["A"].width = 24
+        sheet.column_dimensions["B"].width = 42
+        sheet.column_dimensions["C"].width = 16
+        sheet.column_dimensions["D"].width = 64
 
 
-def _write_table(sheet, rows: list[list[str]], page: int, strategy: str, source_pages: list[int] | None = None) -> None:
+def _write_table(sheet, rows: list[list[str]], page: int, strategy: str, source_pages: list[int] | None = None, streaming: bool = False) -> None:
     pages = ", ".join(map(str, source_pages or [page]))
     sheet.append([f"Source pages: {pages}", f"Detection: {strategy}"])
     sheet.append([])
     for row in rows:
         sheet.append([_typed_excel_value(value) for value in row])
-    for row in sheet.iter_rows(min_row=3, max_row=sheet.max_row):
-        for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    if not streaming:
+        for row in sheet.iter_rows(min_row=3, max_row=sheet.max_row):
+            for cell in row:
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
     if rows and rows[0]:
         sheet.column_dimensions["A"].width = min(60, max(24, max(len(line) for line in rows[0][0].splitlines())))
+    if streaming:
+        sheet.freeze_panes = "A4"
+        return
     for span in infer_spans(rows):
         start_row = span.row + 4
         start_col = span.column + 1
@@ -445,7 +449,8 @@ def _write_audit_sheet(sheet, document: Any, tables: list[ExtractedTable]) -> No
                 for column_index, value in enumerate(row, start=1):
                     sheet.append(["legacy_cell", table.page, f"p{table.page}-t{table.index}-r{row_index}-c{column_index}", value, None, table.strategy, json.dumps({"page": table.page}, ensure_ascii=False)])
     sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:G{max(1, sheet.max_row)}"
+    if not getattr(sheet.parent, "write_only", False):
+        sheet.auto_filter.ref = f"A1:G{max(1, sheet.max_row)}"
 
 
 def _ocr_pdf(input_path: str) -> list[list[Any]]:
@@ -484,7 +489,8 @@ def _write_text_sheet(sheet, rows: list[list[Any]]) -> None:
             current_page = page
         sheet.append(row)
     sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:C{len(rows) + 1}"
+    if not getattr(sheet.parent, "write_only", False):
+        sheet.auto_filter.ref = f"A1:C{len(rows) + 1}"
 
 
 def _safe_sheet_name(name: str, workbook: Workbook) -> str:
@@ -499,6 +505,8 @@ def _safe_sheet_name(name: str, workbook: Workbook) -> str:
 
 
 def _style_workbook(workbook: Workbook) -> None:
+    if getattr(workbook, "write_only", False):
+        return
     navy = "10182F"
     cobalt = "4164EA"
     pale = "EEF2FF"
