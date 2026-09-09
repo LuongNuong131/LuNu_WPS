@@ -11,8 +11,8 @@ OfficeFlow là dự án cộng đồng miễn phí, local/open-source-first, t�
 | Multi-page table continuation | Partial | Merge bảo thủ khi các bảng ở trang liền kề có repeated header tương đương; merged cells phức tạp vẫn cần review. |
 | Upload and artifact boundary hardening | Implemented | Kiểm tra extension, giới hạn kích thước, file rỗng, path artifact và lỗi output. |
 | Job persistence and restart recovery | Partial | Metadata job đã lưu SQLite; job đang chạy khi restart được đánh dấu cần retry. Durable worker recovery vẫn chưa có. |
-| Authentication, ownership and authorization | Planned | Chưa có identity model; không được xem là production privacy boundary. |
-| Durable queue and workers | Planned | Hiện dùng FastAPI `BackgroundTasks`. |
+| Authentication, ownership and authorization | Implemented | JWT session, password hashing và tenant-scoped job status/download. Bật `AUTH_REQUIRED=true` khi deploy production. |
+| Durable queue and workers | Implemented (configurable) | Celery/Redis với late acknowledgement, bounded retry và prefetch=1; local fallback giữ cho development/test. |
 | Document library and synchronized history | Planned | Frontend history hiện chỉ lưu trên thiết bị. |
 
 Chi tiết gap, rủi ro và migration plan nằm trong [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) và [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md).
@@ -22,6 +22,12 @@ Gap matrix định lượng riêng cho flagship PDF → Excel nằm trong [PDF_E
 ## Các workflow hiện có
 
 Repository giữ các workflow PDF và Office hiện có: PDF → Excel, Merge PDF, Split PDF, Compress PDF, Rotate PDF, PDF → JPG, Extract pages, Delete pages, PDF → Word, Word → PDF, Excel → PDF, PowerPoint → PDF, Images → PDF và image conversion.
+
+## Production hardening additions
+
+Set `JWT_SECRET_KEY` to a unique secret of at least 32 bytes and `AUTH_REQUIRED=true` in production. Users can register and log in through `/api/v1/auth/register` and `/api/v1/auth/login`; every job carries `user_id`, and status/download queries require the same owner. PostgreSQL deployment foundations are defined in `backend/app/persistence/sqlalchemy_models.py` and the async engine factory in `backend/app/persistence/database.py`; local SQLite compatibility remains available for regression tests.
+
+For durable processing, set `REDIS_URL=redis://...` and run `PYTHONPATH=backend celery -A app.queue:celery_app worker --loglevel=INFO`. The table engine includes conservative merged-cell span inference, parent/child header hierarchy metadata and deterministic x-axis clustering for borderless layouts. Run the golden evaluator with `PYTHONPATH=backend python3 backend/tests/benchmark/evaluate.py backend/tests/benchmark/sample.json`; the score combines cell accuracy, merged-cell recall and header accuracy. The frontend sends bearer tokens and presents low-confidence review tasks while preserving raw extracted values.
 
 ## PDF → Excel quality model
 

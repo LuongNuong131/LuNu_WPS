@@ -16,6 +16,8 @@
 
         <div class="flex items-center gap-2">
           <router-link to="/dashboard" class="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 transition hover:-translate-y-0.5 hover:border-[#c6d0f4] hover:bg-[#f7f8ff] sm:flex"><LayoutDashboard :size="15" /> <span class="hidden lg:inline">Workspace</span></router-link>
+          <span v-if="currentUsername" class="hidden text-xs font-semibold text-slate-500 lg:inline">{{ currentUsername }}</span>
+          <button v-if="auth.isAuthenticated" class="hidden rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 sm:inline-flex" @click="auth.logout">Log out</button>
           <router-link to="/#tools" class="primary-button hidden sm:inline-flex">Start creating <ArrowUpRight :size="16" /></router-link>
           <button class="icon-button md:hidden" aria-label="Open navigation" @click="mobileOpen = !mobileOpen">
             <Menu v-if="!mobileOpen" :size="21" />
@@ -47,11 +49,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowUpRight, LayoutDashboard, Menu, X } from '@lucide/vue'
+import { useAuth } from '../../stores/auth'
 
 const mobileOpen = ref(false)
+const auth = useAuth()
+const currentUsername = computed(() => auth.user.value?.username || '')
 const route = useRoute()
 function isActive(to: string) { return !to.startsWith('/#') && route.path === to }
 const navItems = [
