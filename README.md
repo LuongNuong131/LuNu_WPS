@@ -1,81 +1,90 @@
 # OfficeFlow
 
-OfficeFlow là dự án cộng đồng miễn phí, local/open-source-first, tập trung vào các workflow xử lý tài liệu chạy thật. Dự án không có pricing, paywall, billing hay tài khoản thương mại. Các file được xử lý theo job; lịch sử gần đây trong giao diện chỉ được lưu cục bộ trên thiết bị và chưa phải bộ nhớ đồng bộ lâu dài.
+> **Local-first document intelligence for real-world PDF → Excel workflows.**
 
-## Trạng thái triển khai
+OfficeFlow là nền tảng xử lý PDF/Office miễn phí và open-source-first, được xây dựng cho các tài liệu không hoàn hảo: PDF scan, trang bị nghiêng, bảng không có đường kẻ, bảng kéo dài qua nhiều trang và dữ liệu tài chính cần kiểm tra trước khi tin cậy. Hệ thống giữ lại **raw value, evidence, confidence, validation result và review task** thay vì âm thầm biến một suy đoán thành dữ liệu chắc chắn.
 
-| Capability | Status | Ghi chú |
-|---|---|---|
-| PDF/Office conversion workflows | Implemented | Chạy qua API và processor hiện có. |
-| PDF → Excel Document Brain | Implemented | Có native extraction, OCR fallback, evidence, truth, validation và audit. |
-| Multi-page table continuation | Partial | Merge bảo thủ khi các bảng ở trang liền kề có repeated header tương đương; merged cells phức tạp vẫn cần review. |
-| Upload and artifact boundary hardening | Implemented | Kiểm tra extension, giới hạn kích thước, file rỗng, path artifact và lỗi output. |
-| Job persistence and restart recovery | Partial | Metadata job đã lưu SQLite; job đang chạy khi restart được đánh dấu cần retry. Durable worker recovery vẫn chưa có. |
-| Authentication, ownership and authorization | Implemented | JWT session, password hashing và tenant-scoped job status/download. Bật `AUTH_REQUIRED=true` khi deploy production. |
-| Durable queue and workers | Implemented (configurable) | Celery/Redis với late acknowledgement, bounded retry và prefetch=1; local fallback giữ cho development/test. |
-| Document library and synchronized history | Planned | Frontend history hiện chỉ lưu trên thiết bị. |
+[![Backend](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)](backend/) [![Frontend](https://img.shields.io/badge/frontend-Vue%203-42b883?logo=vue.js&logoColor=white)](frontend/) [![OCR](https://img.shields.io/badge/OCR-Tesseract-blue)](backend/app/document_ai/ocr/) [![License](https://img.shields.io/badge/license-open--source-lightgrey)](#license)
 
-Chi tiết gap, rủi ro và migration plan nằm trong [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) và [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md).
+## Vì sao OfficeFlow khác biệt?
 
-Gap matrix định lượng riêng cho flagship PDF → Excel nằm trong [PDF_EXCEL_GAP_MATRIX.md](PDF_EXCEL_GAP_MATRIX.md). Điểm số trong ma trận là đánh giá engineering hiện trạng, không phải accuracy benchmark trên corpus bên ngoài.
+| Năng lực | Trạng thái | Giá trị vận hành |
+|---|---:|---|
+| PDF/Office conversion workflows | ✅ Implemented | Merge, split, compress, rotate, convert và các workflow tài liệu phổ biến. |
+| PDF → Excel Document Brain | ✅ Implemented | Native extraction, OCR fallback, semantic entities, evidence, truth model và audit workbook. |
+| Deskew và noise resilience | ✅ Implemented | Tự phát hiện góc nghiêng nhỏ trước OCR, ghi lại góc xoay trong diagnostics. |
+| Borderless table inference | ✅ Implemented | Density clustering cho alignment thay vì yêu cầu bounding box hoàn hảo. |
+| Headerless multi-page continuation | ✅ Implemented | Dùng column-width similarity và data-type matching khi trang sau không lặp header. |
+| Financial truth checks | ✅ Implemented | Kiểm tra `Quantity × Unit Price ≈ Line Total` và `Subtotal + Tax ≈ Grand Total`. |
+| Human conflict review | ✅ Implemented | Conflict gắn với cell, ưu tiên cao và hiển thị nổi bật trong Confidence Review Panel. |
+| Durable queue | ✅ Configurable | Celery + Redis, late acknowledgement, bounded retry và prefetch thấp. |
+| Production stack | ✅ Implemented | Docker Compose gồm FastAPI, Vue/Nginx, PostgreSQL, Redis và Celery. |
+| Structured observability | ✅ Implemented | JSON logs có job ID, document ID, tool, retry count và exception stack trace. |
 
-## Các workflow hiện có
-
-Repository giữ các workflow PDF và Office hiện có: PDF → Excel, Merge PDF, Split PDF, Compress PDF, Rotate PDF, PDF → JPG, Extract pages, Delete pages, PDF → Word, Word → PDF, Excel → PDF, PowerPoint → PDF, Images → PDF và image conversion.
-
-## Production hardening additions
-
-Set `JWT_SECRET_KEY` to a unique secret of at least 32 bytes and `AUTH_REQUIRED=true` in production. Users can register and log in through `/api/v1/auth/register` and `/api/v1/auth/login`; every job carries `user_id`, and status/download queries require the same owner. PostgreSQL deployment foundations are defined in `backend/app/persistence/sqlalchemy_models.py` and the async engine factory in `backend/app/persistence/database.py`; local SQLite compatibility remains available for regression tests.
-
-For durable processing, set `REDIS_URL=redis://...` and run `PYTHONPATH=backend celery -A app.queue:celery_app worker --loglevel=INFO`. The table engine includes conservative merged-cell span inference, parent/child header hierarchy metadata and deterministic x-axis clustering for borderless layouts. Run the golden evaluator with `PYTHONPATH=backend python3 backend/tests/benchmark/evaluate.py backend/tests/benchmark/sample.json`; the score combines cell accuracy, merged-cell recall and header accuracy. The frontend sends bearer tokens and presents low-confidence review tasks while preserving raw extracted values.
-
-## PDF → Excel quality model
-
-PDF → Excel sử dụng ba mode. **Adaptive** dùng canonical document pipeline, native extraction và OCR fallback theo từng trang. **Tables** ưu tiên các bảng phát hiện được và không thêm sheet text. **Text** giữ toàn bộ text đọc được theo trang/dòng. Khi tài liệu có text native tốt, native layer được ưu tiên; OCR chỉ chạy ở trang trống, image-heavy, sparse hoặc có tín hiệu chất lượng thấp.
-
-Workbook có `Overview`, các sheet bảng, `Document Text` khi được bật và `Audit`. Audit giữ raw text, object ID, page, confidence, engine và evidence JSON. Giá trị số hoặc tiền tệ chỉ được chuyển thành kiểu Excel khi parse đủ rõ ràng; raw text không bị âm thầm ghi đè. Các bảng ở trang liền kề có repeated header tương đương được merge vào một worksheet và diagnostics giữ `source_pages`, `merged_table_count` và `multi_page_tables`. Scan mờ, merged cells phức tạp, bảng nghiêng, biểu đồ và layout cực phức tạp có thể cần review thủ công; hệ thống ghi warning thay vì cam kết khôi phục hoàn hảo.
-
-## Kiến trúc Document Intelligence
-
-Pipeline chính là:
+## Kiến trúc xử lý
 
 ```text
 Upload
-  → validation + SHA-256 fingerprint
-  → page-level profile
-  → processing plan
+  → validation + fingerprint
+  → page profile + quality signals
   → native text/table extraction
   → OCR fallback theo trang
-  → OCR tokens, bbox, confidence và pass diagnostics
+  → deskew + preprocessing
   → canonical document model
-  → semantic entities
-  → provenance/evidence
-  → workbook + audit metadata
+  → layout/table inference
+  → semantic entities + provenance
+  → truth model
+  → arithmetic validation
+  → review tasks / ready state
+  → workbook + Audit sheet
 ```
 
-`CanonicalDocument` là lớp trung tâm kết nối `DocumentSource`, `DocumentProfile`, `DocumentQuality`, `DocumentPage`, `DocumentBlock`, `DocumentTable`, `DocumentEntity`, `Evidence` và `ProcessingEvent`. OCR engine được trừu tượng hóa qua adapter; Tesseract là adapter local mặc định. Có thể bổ sung PaddleOCR, EasyOCR hoặc engine khác mà không đổi processor/export contract.
+`CanonicalDocument` là hợp đồng trung tâm giữa ingestion, OCR, layout, semantics, validation và export. Mỗi object quan trọng có thể truy ngược về page, bbox, table/cell ID, quote, engine và confidence. Pipeline không quảng cáo accuracy tuyệt đối; nó công khai uncertainty để người dùng có thể kiểm tra.
 
-Mỗi trang có profile riêng gồm kích thước, rotation, native character count, images, table/vector signals, blank/image-heavy status, quality warnings và cờ `ocr_recommended`. Tesseract thử hai layout pass (`PSM 6` và `PSM 11`) rồi chọn pass theo confidence, tỷ lệ ký tự hợp lệ và số token có nghĩa. Kết quả lưu language, preprocessing profile, raster size, pass scores và selected pass.
+## Tính năng nổi bật
 
-## Cài đặt
+### 1. OCR chịu được tài liệu thực tế
 
-Backend yêu cầu Python 3.11+ và các package trong `backend/requirements.txt`. OCR local yêu cầu Tesseract cùng language packs. Trên Ubuntu, cài tối thiểu:
+Preprocessing local-first dùng OpenCV, NumPy và Pillow. Deskew chỉ được áp dụng khi tín hiệu hình học đủ mạnh và góc nằm trong phạm vi an toàn; các trường hợp thiếu tín hiệu được ghi warning thay vì xoay bừa. OCR diagnostics lưu `deskew_angle`, `deskew_applied`, raster size, selected pass, confidence và preprocessing profile.
+
+Layout inference hỗ trợ merged-cell span bảo thủ, header hierarchy và clustering một chiều cho các cột borderless có sai lệch nhỏ do scan/OCR. Các bảng nối tiếp được merge khi thỏa đồng thời điều kiện trang liền kề, số cột, similarity của vector độ rộng và tương thích kiểu dữ liệu.
+
+### 2. Financial truth thay vì chỉ type-checking
+
+Validation engine nhận diện các cột phổ biến như `Quantity`, `Unit Price`, `Line Total`, `Subtotal`, `Tax`, `Grand Total` và áp dụng tolerance 1% hoặc ngưỡng tuyệt đối nhỏ. Khi phép tính thất bại, hệ thống:
+
+1. Tạo `ValidationResult` trạng thái `invalid`.
+2. Tạo `ReviewTask` trạng thái `arithmetic_conflict` ở cấp cell.
+3. Gắn priority `high` và evidence của cell.
+4. Đưa conflict vào review panel của frontend.
+5. Đánh dấu truth facts là `conflicting` mà không sửa raw source value.
+
+### 3. Production-ready nhưng vẫn dễ chạy local
+
+Docker Compose cung cấp một stack hoàn chỉnh. Backend và Celery dùng cùng image để tránh lệch dependency; frontend được build multi-stage và phục vụ qua Nginx; Postgres và Redis có volume riêng cùng healthcheck. Worker có retry backoff cho lỗi kết nối tạm thời và JSON logs để điều tra job hỏng ở bất kỳ trang nào.
+
+## Cài đặt local
+
+### Yêu cầu
+
+- Python 3.11+
+- Node.js 22+
+- Tesseract OCR và language packs cần thiết
+- PostgreSQL/Redis chỉ bắt buộc khi bật durable queue hoặc production deployment
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie
+sudo pip3 install -r backend/requirements.txt
 ```
 
-Các language code được API cho phép gồm `eng`, `vie`, `chi_sim`, `jpn`, `kor`, `tha`, `ind`, `fra`, `deu`, `spa`, `por`, `ita`, `rus` và `ara`, nhưng code chỉ được dùng đầy đủ khi language pack tương ứng đã cài. `auto` mặc định chọn `eng+vie` khi có sẵn và fallback an toàn nếu thiếu pack.
-
-Cài dependency và chạy backend:
+### Chạy backend
 
 ```bash
-sudo pip3 install -r backend/requirements.txt
-PYTHONPATH=backend uvicorn main:app --reload --port 8000
+PYTHONPATH=backend uvicorn main:app --app-dir backend --reload --port 8000
 ```
 
-Chạy frontend:
+### Chạy frontend
 
 ```bash
 cd frontend
@@ -83,37 +92,68 @@ npm ci
 npm run dev
 ```
 
-SQLite JobStore mặc định được tạo tại `backend/storage/jobs.sqlite3` và bị loại khỏi Git. Có thể đổi đường dẫn bằng biến cấu hình `JOB_DB_PATH`. Hai endpoint vận hành là `/health` cho liveness và `/health/ready` cho readiness, bao gồm kiểm tra thư mục storage và SQLite.
+API docs có tại `http://localhost:8000/docs`. Liveness là `/health`; readiness là `/health/ready`.
 
-## Kiểm thử
+## Chạy production bằng Docker Compose
 
-Regression tests tạo fixture PDF native, bảng có đường kẻ, scan image-only và kiểm tra workbook mở được bằng `openpyxl`, sheet structure, typed money, provenance, OCR pass metadata, API options validation, result metadata và download.
+```bash
+cp .env.example .env
+# Đặt JWT_SECRET_KEY thành secret ngẫu nhiên tối thiểu 32 bytes.
+docker compose up --build -d
+docker compose ps
+```
+
+Sau khi khởi động:
+
+| Service | URL / vai trò |
+|---|---|
+| Frontend | `http://localhost/` |
+| Backend API | `http://localhost:8000/docs` |
+| PostgreSQL | Internal `postgres:5432` |
+| Redis | Internal `redis:6379` |
+| Celery worker | Durable document processing |
+
+Production nên bật `AUTH_REQUIRED=true`, đặt `JWT_SECRET_KEY` riêng cho từng môi trường và đưa secrets vào secret manager thay vì commit vào repository. `DATABASE_URL` và `REDIS_URL` có thể trỏ đến managed services khi triển khai ngoài Compose.
+
+## Kiểm thử và quality gates
 
 ```bash
 PYTHONPATH=backend python3 -m compileall -q backend
-PYTHONPATH=backend pytest -q
+PYTHONPATH=backend python3 -m pytest -q
 cd frontend && npm run build
 cd .. && git diff --check
+docker compose config
 ```
 
-## Giới hạn và privacy
+Các regression tests hiện bao phủ native PDF, image-only scan, OCR fallback, deskew, density clustering, headerless continuation, typed Excel values, provenance, arithmetic conflict, API validation và workbook audit.
 
-Giới hạn upload hiện tại là 25 MB mỗi file và tối đa 10 file theo tool. File rỗng bị từ chối. Nếu một request có cùng basename nhiều lần, backend đổi tên bản lưu nội bộ để không ghi đè nguồn đã nhận. Input tạm được lưu trong job directory và dọn sau khi xử lý; output lỗi bị xóa, còn output thành công chưa có cleanup TTL tự động. Download chỉ chấp nhận artifact filename do backend sinh và kiểm tra artifact nằm trong output directory. Job metadata hiện có persistence SQLite cho local/test, nhưng chưa có PostgreSQL, authentication hoặc ownership authorization; vì vậy không nên gửi tài liệu nhạy cảm vào môi trường chưa được harden theo chính sách triển khai của bạn. SHA-256 chỉ là fingerprint nội bộ, không phải cam kết bảo mật hoặc deduplication persistence.
+## Data contract và privacy
 
-OCR và table reconstruction là các quá trình xác suất/heuristic. OfficeFlow công khai confidence, warning và evidence để người dùng kiểm tra; không tuyên bố tái tạo 100% mọi PDF scan hoặc layout bất thường.
+OfficeFlow lưu raw extraction và evidence để audit. Review task chỉ lưu verified value tách biệt, không ghi đè observation ban đầu. File input tạm nằm trong job directory và được dọn sau xử lý; output thành công vẫn cần policy cleanup/TTL riêng khi deploy lâu dài. Upload mặc định giới hạn 25 MB mỗi file và tối đa 10 file.
 
-## Document Brain 4.0 contracts
+OCR và table reconstruction là heuristic. Scan mờ, chữ viết tay, merged cells phức tạp, biểu đồ và layout bất thường có thể cần người kiểm tra. Không nên đưa tài liệu nhạy cảm vào môi trường chưa bật authentication, access control và storage policy phù hợp.
 
-Canonical documents expose a versioned `DocumentState` lifecycle: `uploaded`, `identified`, `profiled`, `understanding`, `extracted`, `validated`, `review_required`, `ready` và `failed`. Mỗi kết quả cũng lưu `PipelineVersion` để biết phiên bản pipeline, OCR, layout, table, semantic và export đã tạo ra artifact.
+## Cấu trúc repository
 
-Quality không được suy đoán thành một con số duy nhất. `quality_dimensions` giữ các thành phần source confidence, OCR confidence, layout confidence, semantic confidence, consistency confidence, evidence coverage và overall score. Mỗi thành phần được tính từ metrics có trong canonical result và có thể kiểm tra trong diagnostics.
+```text
+backend/
+  app/document_ai/       # canonical model, OCR, layout, semantics, truth, validation
+  app/processors/        # PDF/Office processors và PDF → Excel exporter
+  app/api/                # FastAPI routes và job lifecycle
+  app/worker.py           # Celery task với retry/backoff và structured logs
+  tests/                  # regression và benchmark fixtures
+frontend/
+  src/components/review/ # confidence và financial conflict review
+  src/views/              # workflow UI
+backend/Dockerfile
+frontend/Dockerfile
+docker-compose.yml
+```
 
-Validation deterministic kiểm tra evidence coverage, độ nhất quán số cột của table và tính hợp lý sơ bộ của các giá trị tiền tệ. Khi entity quan trọng có confidence thấp hoặc thiếu evidence, hệ thống tạo `ReviewTask` với field, raw value, priority, reason, confidence và evidence. Review task không sửa raw source value; nó chỉ đánh dấu phần cần người dùng kiểm tra.
+## Roadmap
 
-Các layer như knowledge graph, multi-document aggregation, document comparison, RAG và workflow automation vẫn là extension points tương lai. Chúng không được giả lập trong giao diện khi backend chưa thực sự cung cấp capability tương ứng.
+Các hướng mở rộng hợp lý gồm PaddleOCR adapter local, learned table boundary proposal, distributed rate limiting, durable PostgreSQL job store hoàn chỉnh, object storage với TTL và benchmark corpus được gắn nhãn ngoài sample fixture. Những capability chưa triển khai sẽ không được giả lập trong UI.
 
-## Document Truth Model 5.0
+## License
 
-Document Brain phân biệt raw observation, extracted value, normalized value, inferred value và verified value. Các trạng thái `unknown`, `not_found`, `unsupported`, `uncertain` và `conflicting` không bị chuyển thành dữ liệu chắc chắn. `DocumentFact` giữ raw value, normalized value, truth status, confidence, explanation và evidence.
-
-Canonical result cũng có graph edges typed. Ví dụ một invoice fact có thể liên kết với money fact bằng quan hệ `has_amount`; đây là quan hệ được suy ra từ các entity đã có evidence, không phải dữ liệu được bịa thêm. PDF → Excel đưa facts, graph edges, validation và review tasks vào Audit sheet cũng như job metadata để có thể kiểm tra hai chiều từ semantic result về source evidence.
+Dự án được phát triển theo hướng cộng đồng và local/open-source-first. Hãy bổ sung file license chính thức khi chọn điều khoản phân phối cho repository.
