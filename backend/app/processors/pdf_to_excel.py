@@ -15,6 +15,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.document_ai.pipeline import PDFIntelligencePipeline
+from app.document_ai.layout.inference import infer_header_hierarchy, infer_spans
 from app.processors.base import DocumentProcessor
 
 
@@ -256,6 +257,14 @@ def _write_table(sheet, rows: list[list[str]], page: int, strategy: str, source_
     sheet.append([])
     for row in rows:
         sheet.append([_typed_excel_value(value) for value in row])
+    for span in infer_spans(rows):
+        start_row = span.row + 4
+        start_col = span.column + 1
+        sheet.merge_cells(start_row=start_row, start_column=start_col, end_row=span.end_row + 4, end_column=span.end_column + 1)
+    hierarchy = infer_header_hierarchy(rows)
+    if hierarchy.get("header_rows", 0) > 1:
+        sheet.cell(row=2, column=1).value = "Header hierarchy"
+        sheet.cell(row=2, column=2).value = json.dumps(hierarchy, ensure_ascii=False)
     sheet.freeze_panes = "A4"
     sheet.auto_filter.ref = f"A3:{get_column_letter(len(rows[0]))}{len(rows) + 2}"
 
